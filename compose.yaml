@@ -1,0 +1,15 @@
+services:
+  mysql:
+    image: mysql:9.7
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?.env가 필요합니다.}
+      MYSQL_USER: ${MYSQL_USER:?.env가 필요합니다}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?.env가 필요합니다}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?.env가 필요합니다}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+volumes:
+  mysql-data:
