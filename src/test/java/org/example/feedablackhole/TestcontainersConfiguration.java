@@ -8,7 +8,7 @@ import org.testcontainers.utility.DockerImageName;
 
 // 테스트용 MySQL 컨테이너. 로컬 DB(compose.yaml)와 같은 버전 사용.
 @TestConfiguration(proxyBeanMethods = false)
-class TestcontainersConfiguration {
+public class TestcontainersConfiguration {
 
     @Bean
     @ServiceConnection
