@@ -1,0 +1,28 @@
+# 로컬 개발용 MySQL. 값은 같은 폴더의 .env에서 읽는다(.env.example을 복사해 만든다).
+# 테스트는 Testcontainers가 별도 컨테이너를 띄우므로 이 DB와 무관하다.
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: feedablackhole-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?.env.example을 복사해 .env를 만드세요}
+      MYSQL_DATABASE: ${DB_NAME:-feedablackhole}
+      MYSQL_USER: ${DB_USERNAME:-blackhole}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?.env.example을 복사해 .env를 만드세요}
+      TZ: UTC
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  mysql-data:
