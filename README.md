@@ -69,7 +69,7 @@ cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
 docker compose up -d        # MySQL 8.4 시작 (healthy가 될 때까지 몇 초 걸립니다)
 ```
 
-- `.env`의 값(DB 이름·계정·비밀번호·포트)을 `docker-compose.yml`과 Spring Boot가 함께 읽습니다. `.env`는 커밋하지 않으며, 비밀번호는 각자 바꿔도 됩니다.
+- `.env`의 값(DB 이름·계정·비밀번호·포트)을 `compose.yaml`과 Spring Boot가 함께 읽습니다. `.env`는 커밋하지 않으며, 비밀번호는 각자 바꿔도 됩니다.
 - 서버 실행: `.\gradlew.bat bootRun` (포트 8080). 시작할 때 Flyway가 DB 스키마를 최신으로 맞춥니다.
 - 중지: `docker compose stop`. 데이터까지 지우려면 `docker compose down -v`.
 - 배포 환경에서는 `.env` 대신 환경변수 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`로 주입합니다.

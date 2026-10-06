@@ -7,7 +7,7 @@ import org.testcontainers.mysql.MySQLContainer;
 
 /**
  * 테스트가 실행되는 동안만 존재하는 MySQL 컨테이너. DB 접속 정보는 Spring이 컨테이너에서 자동으로 가져온다.
- * 버전은 docker-compose.yml과 같게 유지한다.
+ * 버전은 compose.yaml과 같게 유지한다.
  */
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
