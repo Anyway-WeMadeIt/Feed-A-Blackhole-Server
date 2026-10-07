@@ -17,6 +17,8 @@ public enum ErrorCode {
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "인증 정보가 올바르지 않습니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요하거나 액세스 토큰이 유효하지 않습니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "리프레시 토큰이 유효하지 않습니다."),
+    STALE_PROGRESS(HttpStatus.CONFLICT, "진행 데이터가 이미 다른 요청으로 바뀌었습니다. 최신 진행 데이터를 다시 받아 주세요."),
+    PROGRESS_REGRESSION(HttpStatus.CONFLICT, "성장도와 노드 Rank는 줄어들 수 없습니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 HTTP 메서드입니다."),
     UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 Content-Type입니다."),

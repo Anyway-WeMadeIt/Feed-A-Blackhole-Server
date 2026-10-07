@@ -25,7 +25,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     ResponseEntity<ErrorResponse> handleApiException(ApiException e) {
         ErrorCode code = e.getErrorCode();
         return ResponseEntity.status(code.getStatus())
-                .body(ErrorResponse.of(code.name(), code.getMessage()));
+                .body(ErrorResponse.of(code.name(), e.getMessage()));
+        // 같은 ErrorCode에 대해서 다른 예외 메시지를 전달하기 위해 code.getMessage()가 아닌 e.getMessage()를 사용한다.
+        // ApiException은 서버가 정의한 예외로, 메시지 역시 직접 설정하므로, 서버의 정보가 의도치 않게 클라이언트로 노출될 우려가 없다.
     }
 
     @ExceptionHandler(Exception.class)
