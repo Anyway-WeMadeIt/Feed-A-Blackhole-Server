@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.example.feedablackhole.account.entity.Account;
-import org.example.feedablackhole.account.repository.AccountRepository;
+import org.example.feedablackhole.account.service.AccountService;
 import org.example.feedablackhole.auth.dto.GuestRegisterResponse;
 import org.example.feedablackhole.auth.dto.TokenResponse;
 import org.example.feedablackhole.auth.entity.AuthIdentity;
@@ -23,7 +23,7 @@ public class GuestAuthService {
     // 없는 guestId로 로그인할 때도 같은 비교를 수행하기 위한 자리 값(어떤 secret의 해시도 될 수 없는 값).
     private static final String UNKNOWN_IDENTITY_HASH = "0".repeat(64);
 
-    private final AccountRepository accountRepository;
+    private final AccountService accountService;
     private final AuthIdentityRepository authIdentityRepository;
     private final SecretCodec secretCodec;
     private final TokenService tokenService;
@@ -37,7 +37,7 @@ public class GuestAuthService {
         String guestId = UUID.randomUUID().toString();
         String secret = secretCodec.newSecret();
 
-        Account account = accountRepository.save(Account.create());
+        Account account = accountService.create();
         authIdentityRepository.save(AuthIdentity.guest(account, guestId, secretCodec.hash(secret)));
 
         return new GuestRegisterResponse(guestId, secret);
