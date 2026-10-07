@@ -72,7 +72,8 @@ docker compose up -d        # MySQL 8.4 시작 (healthy가 될 때까지 몇 초
 - `.env`의 값(DB 이름·계정·비밀번호·포트)을 `compose.yaml`과 Spring Boot가 함께 읽습니다. `.env`는 커밋하지 않으며, 비밀번호는 각자 바꿔도 됩니다.
 - 서버 실행: `.\gradlew.bat bootRun` (포트 8080). 시작할 때 Flyway가 DB 스키마를 최신으로 맞춥니다.
 - 중지: `docker compose stop`. 데이터까지 지우려면 `docker compose down -v`.
-- 배포 환경에서는 `.env` 대신 환경변수 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`로 주입합니다.
+- JWT 서명 키 `JWT_SECRET`도 `.env`에 둡니다. 32자 이상의 무작위 문자열이어야 하며, 비어 있거나 짧으면 서버가 시작되지 않습니다. 생성 예: `python -c "import secrets;print(secrets.token_urlsafe(48))"`. 키를 바꾸면 이미 발급된 액세스 토큰이 모두 무효가 됩니다.
+- 배포 환경에서는 `.env` 대신 환경변수 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`으로 주입합니다.
 
 ## DB 스키마 (Flyway)
 
