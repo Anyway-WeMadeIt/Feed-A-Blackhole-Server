@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.example.feedablackhole.account.entity.Account;
 import org.example.feedablackhole.account.repository.AccountRepository;
 import org.example.feedablackhole.auth.dto.GuestRegisterResponse;
+import org.example.feedablackhole.auth.dto.TokenResponse;
 import org.example.feedablackhole.auth.entity.AuthIdentity;
 import org.example.feedablackhole.auth.entity.AuthIdentityType;
 import org.example.feedablackhole.auth.repository.AuthIdentityRepository;
@@ -25,6 +26,7 @@ public class GuestAuthService {
     private final AccountRepository accountRepository;
     private final AuthIdentityRepository authIdentityRepository;
     private final SecretCodec secretCodec;
+    private final TokenService tokenService;
     private final Clock clock;
 
     /**
@@ -42,11 +44,11 @@ public class GuestAuthService {
     }
 
     /**
-     * guestId와 secret을 확인하고 계정 ID를 돌려준다.
+     * guestId와 secret을 확인하고 로그인 상태(토큰 쌍)를 발급한다.
      * guestId가 없는 경우와 secret이 틀린 경우를 같은 오류로 응답해, 존재하는 guestId를 알아낼 수 없게 한다.
      */
     @Transactional
-    public long login(String guestId, String secret) {
+    public TokenResponse login(String guestId, String secret) {
         Optional<AuthIdentity> identity =
                 authIdentityRepository.findByTypeAndIdentifier(AuthIdentityType.GUEST, guestId);
         String storedHash = identity.map(AuthIdentity::getSecretHash).orElse(UNKNOWN_IDENTITY_HASH);
@@ -58,7 +60,7 @@ public class GuestAuthService {
 
         Account account = identity.get().getAccount();
         account.markLoggedIn(clock.instant());
-        return account.getId();
+        return tokenService.issue(account);
     }
 
 }

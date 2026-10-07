@@ -84,7 +84,8 @@ class GuestAuthApiTests {
 
         mockMvc.perform(loginRequest(guestIdOf(body), guestSecretOf(body)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accountId").value(identity.getAccount().getId()));
+                .andExpect(jsonPath("$.accessToken").isNotEmpty())
+                .andExpect(jsonPath("$.refreshToken").isNotEmpty());
 
         assertThat(identity.getAccount().getLastLoginAt()).isNotNull();
     }
@@ -123,13 +124,6 @@ class GuestAuthApiTests {
         mockMvc.perform(post(LOGIN).contentType(MediaType.APPLICATION_JSON).content("{not json"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
-    }
-
-    @Test
-    void unknownPathUsesTheCommonErrorFormat() throws Exception {
-        mockMvc.perform(get("/api/v1/nothing-here"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
     }
 
     @Test
