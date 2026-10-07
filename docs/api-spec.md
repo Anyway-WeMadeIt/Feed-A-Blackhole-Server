@@ -2,8 +2,8 @@
 
 클라이언트(Unity)와 서버(Spring Boot)의 통신 계약이다. 변경은 이 문서를 먼저 고친 뒤 구현에 반영한다.
 
-- 상태: **초안 v0.2** — 인증, 진행 데이터, 노드 트리·구매, 전투 세션의 골격까지. 전투 이벤트 로그 형식은 미정이다([미정 항목](#미정-항목)).
-- 구현 현황: 게스트 등록·로그인(`/auth/guest/*`)과 공통 오류 응답이 구현되어 있다. 토큰 발급(`accessToken`·`refreshToken`)·갱신·로그아웃, `/system/status`와 그 외 엔드포인트는 아직 구현 전이다.
+- 상태: **초안 v0.3** — 인증, 진행 데이터, 노드 트리·구매, 전투 세션의 골격까지. 전투 이벤트 로그 형식은 미정이다([미정 항목](#미정-항목)).
+- 구현 현황: 인증 전체(게스트 등록·로그인, 토큰 갱신·로그아웃)와 `GET /me`, 공통 오류 응답이 구현되어 있다. `/system/status`와 진행 데이터·노드·전투 API는 아직 구현 전이다.
 - 전제: 온라인 필수, 리더보드는 범위 밖(기본 서버 완성 후 확장 검토).
 
 ## 설계 원칙
@@ -47,6 +47,8 @@
 |---|---|---|
 | `INVALID_REQUEST` | 400 | 필수 필드 누락·길이 초과, 잘못된 JSON 등. 필드 검증 실패는 `message`에 필드명이 담긴다. |
 | `INVALID_CREDENTIALS` | 401 | 로그인 정보가 맞지 않음. |
+| `UNAUTHORIZED` | 401 | 인증이 필요한 API에 액세스 토큰이 없거나, 만료·위조 등으로 유효하지 않음. 클라이언트는 리프레시 토큰으로 갱신을 시도한다. |
+| `INVALID_REFRESH_TOKEN` | 401 | 리프레시 토큰이 없는 값이거나 만료·폐기됨. 클라이언트는 `guestId`·`guestSecret`으로 다시 로그인한다. |
 | `NOT_FOUND` | 404 | 없는 경로. |
 | `METHOD_NOT_ALLOWED` | 405 | 경로는 있으나 지원하지 않는 HTTP 메서드. |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | 지원하지 않는 `Content-Type`. |
@@ -54,14 +56,15 @@
 
 ## 인증
 
-토큰 없이 호출한다. 계정 모델은 `account` / `auth_identity` / `refresh_token` 테이블(`V1__create_auth_tables.sql`)을 따른다. 게스트의 `guestId`는 `auth_identity.identifier`, `guestSecret`은 `secret_hash`(SHA-256)로 저장된다.
+토큰 없이 호출한다(`/auth/**` 전체. 이외의 API는 모두 액세스 토큰이 필요하다). 계정 모델은 `account` / `auth_identity` / `refresh_token` 테이블(`V1__create_auth_tables.sql`)을 따른다. 게스트의 `guestId`는 `auth_identity.identifier`, `guestSecret`은 `secret_hash`(SHA-256)로 저장된다.
 
 | | 경로 | 설명 |
 |---|---|---|
 | POST | `/auth/guest/register` | 새 게스트 계정을 만들고 `guestId`, `guestSecret`을 발급한다. 계정 생성 시 진행 데이터를 초기값(Gold 0, 시작 성장도)으로 만든다(진행 데이터 도입 단계에서 함께 구현). |
-| POST | `/auth/guest/login` | `{guestId, guestSecret}`으로 로그인하고 `accessToken`, `refreshToken`을 받는다(토큰은 구현 전, 아래 참고). |
+| POST | `/auth/guest/login` | `{guestId, guestSecret}`으로 로그인하고 `accessToken`, `refreshToken`을 받는다. |
 | POST | `/auth/refresh` | 리프레시 토큰으로 새 토큰 쌍을 받는다. 토큰은 사용할 때마다 교체(회전)된다. |
 | POST | `/auth/logout` | 리프레시 토큰을 폐기한다. |
+| GET | `/me` | (인증 필요) 액세스 토큰이 가리키는 계정. 토큰이 유효한지 확인하는 용도로도 쓴다. |
 | GET | `/system/status` | `{ "minClientVersion": "...", "maintenance": false }`. 인증 불필요. 시작 화면에서 호출한다. |
 
 - `guestSecret`은 클라이언트가 안전하게 저장한다. 서버는 해시만 보관하므로 분실하면 복구할 수 없다.
@@ -87,14 +90,66 @@
 // 요청 (두 필드 모두 필수. guestId ≤ 255자, guestSecret ≤ 128자)
 { "guestId": "ccd9b782-14b3-4a62-a004-22951ad0eeb3", "guestSecret": "O4uOMSZI3-..." }
 
-// 200 OK — 토큰 발급 구현 전의 임시 형태
-{ "accountId": 2 }
+// 200 OK
+{ "accessToken": "eyJhbGciOiJIUzI1NiJ9...", "expiresIn": 900, "refreshToken": "kObw44EmutxdPuBKFcIkN7eKsLc1amB79wSA128ucWU" }
 ```
 
-- 최종 응답은 `{ "accessToken": "...", "refreshToken": "..." }`이다(토큰 단계에서 `accountId` 대신 교체한다).
 - 로그인에 성공하면 계정의 `last_login_at`이 갱신된다.
 - `guestId`가 없는 경우와 `guestSecret`이 틀린 경우는 **같은 `401 INVALID_CREDENTIALS` 응답**이다. 존재하는 `guestId`를 알아낼 수 없게 하기 위함이다.
 - 입력 형식 오류(빈 값, 길이 초과, 잘못된 JSON)는 `400 INVALID_REQUEST`.
+- 로그인할 때마다 새 리프레시 토큰이 발급되므로 기기 여러 대에서 같은 계정을 쓸 수 있다.
+
+### 토큰
+
+로그인과 갱신은 같은 형식의 응답(`TokenResponse`)을 돌려준다.
+
+| 필드 | 설명 |
+|---|---|
+| `accessToken` | API 호출에 쓰는 JWT(HS256). `Authorization: Bearer <accessToken>` 헤더로 보낸다. 수명 15분. 담는 값은 발급자(`iss`), 계정 ID(`sub`), 발급·만료 시각(`iat`, `exp`)뿐이다. 서버가 상태를 저장하지 않아 발급 후 취소할 수 없다. |
+| `expiresIn` | 액세스 토큰이 몇 초 뒤 만료되는지(현재 900). 클라이언트가 갱신 시점을 정하는 데 쓴다. |
+| `refreshToken` | 새 액세스 토큰을 받는 데 쓰는 불투명한 랜덤 값(43자). 수명 30일. **한 번 쓰면 폐기되므로 응답의 새 값으로 교체해 저장해야 한다.** 서버에는 해시만 저장된다. |
+
+클라이언트 처리 흐름:
+
+```
+API 호출 → 401 UNAUTHORIZED          → POST /auth/refresh 로 새 토큰을 받아 한 번 재시도
+POST /auth/refresh → 401 INVALID_REFRESH_TOKEN → guestId·guestSecret으로 다시 로그인
+```
+
+### POST `/auth/refresh`
+
+```json
+// 요청
+{ "refreshToken": "kObw44EmutxdPuBKFcIkN7eKsLc1amB79wSA128ucWU" }
+
+// 200 OK — 로그인 응답과 같은 형식. 쓴 리프레시 토큰은 폐기되고 새 값이 들어 있다.
+{ "accessToken": "...", "expiresIn": 900, "refreshToken": "새 값" }
+```
+
+- 이미 쓴(폐기된) 리프레시 토큰이 다시 들어오면 토큰이 복사되어 쓰이는 것으로 보고 **`401 INVALID_REFRESH_TOKEN`으로 거부하고, 그 계정의 모든 리프레시 토큰을 폐기한다.** 정상적으로 새로 받은 토큰도 무효가 되므로 사용자는 다시 로그인해야 한다. 응답을 받지 못한 채 같은 요청을 다시 보내는 경우에도 이렇게 되므로, 클라이언트는 갱신 요청을 동시에 여러 번 보내지 않는다.
+- 없는 토큰, 만료된 토큰, 폐기된 토큰은 모두 같은 `401 INVALID_REFRESH_TOKEN`이다.
+- 같은 토큰으로 동시에 들어온 요청은 서버가 한 번에 하나씩 처리한다.
+
+### POST `/auth/logout`
+
+```json
+// 요청
+{ "refreshToken": "kObw44EmutxdPuBKFcIkN7eKsLc1amB79wSA128ucWU" }
+
+// 204 No Content
+```
+
+- 해당 리프레시 토큰을 폐기한다. 이미 폐기됐거나 없는 토큰이어도 `204`이다(반복 호출 가능, 토큰의 존재 여부도 알리지 않는다).
+- 이미 발급된 액세스 토큰은 만료(최대 15분)까지 유효하다. 클라이언트는 로그아웃 시 저장한 토큰을 모두 지운다.
+
+### GET `/me`
+
+```json
+// 200 OK
+{ "accountId": 3 }
+```
+
+- 액세스 토큰이 없거나 유효하지 않으면 `401 UNAUTHORIZED`이며 `WWW-Authenticate: Bearer` 헤더가 붙는다.
 
 ## 진행 데이터
 
