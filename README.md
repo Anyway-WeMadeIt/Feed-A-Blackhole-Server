@@ -89,4 +89,9 @@ docker compose up -d        # MySQL 8.4 시작 (healthy가 될 때까지 몇 초
 - 전체 빌드·DB 테스트를 실행하는 GitHub Actions CI는 후속 단계입니다. 현재 CI는 코드 스타일(Checkstyle) 전용입니다.
 - 브랜치 보호·필수 리뷰와 병합 방식은 GitHub에서 별도로 설정해야 합니다. 문서와 템플릿 추가만으로 활성화되지 않습니다.
 
+## 노드 콘텐츠
+
+노드 트리(노드, 비용, 효과, 배치)의 원본은 `src/main/resources/content/nodes/`의 파일이며, 서버가 시작할 때 읽어 검증합니다.
+콘텐츠에 문제가 있으면 모든 문제를 알리고 서버가 시작되지 않습니다. 형식, 규칙, 수정 절차는 [docs/node-content.md](docs/node-content.md)를 참고하세요.
+
 협업 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
