@@ -62,6 +62,20 @@ bash ./gradlew --version
 `test`와 `build`는 Testcontainers가 MySQL 컨테이너를 자동으로 띄우므로 **Docker가 실행 중이어야 합니다.**
 `bootRun`은 아래 로컬 DB가 떠 있어야 합니다.
 
+### 테스트 구성
+
+Unity 클라이언트 없이 서버만으로 검증합니다. 모든 테스트는 실제 MySQL 8.4 컨테이너에서 실행됩니다.
+
+| 종류 | 위치 | 확인하는 것 |
+| --- | --- | --- |
+| 스키마·매핑 | `*SchemaTests`, `AuditingTests` | Flyway 스키마와 엔티티·제약 조건의 일치 |
+| 단위 | `SecretCodecTests` | 비밀값 생성·해시 |
+| API(서버 내부 호출) | `*ApiTests` | 컨트롤러·보안·검증·서비스·DB를 `MockMvc`로. 테스트마다 롤백 |
+| **클라이언트 흐름(실제 HTTP)** | `e2e/Stage1ClientFlowTests` | 서버를 실제 포트로 띄우고 `support/FakeClient`가 명세(`docs/api-spec.md`)대로 요청을 조립해 전송. 최초 실행, 재시작, 토큰 만료(시계를 앞당김), 새 게임, 기기 두 대, 오류 응답 형식, **실제 동시 요청** |
+
+- `FakeClient`는 명세의 클라이언트 처리 흐름을 구현한 기준 구현입니다. 서버의 DTO를 쓰지 않고 JSON 문자열을 직접 조립하므로, 서버와 명세가 함께 틀어지는 일을 잡습니다.
+- 새 API를 만들면 `Stage1ClientFlowTests`처럼 FakeClient로 시나리오를 추가하고, 명세를 먼저 고친 뒤 구현합니다.
+
 ## 로컬 DB 준비
 
 ```sh

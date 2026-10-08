@@ -116,9 +116,17 @@
 클라이언트 처리 흐름:
 
 ```
-API 호출 → 401 UNAUTHORIZED          → POST /auth/refresh 로 새 토큰을 받아 한 번 재시도
-POST /auth/refresh → 401 INVALID_REFRESH_TOKEN → guestId·guestSecret으로 다시 로그인
+앱 시작   : 저장된 guestId가 없으면(최초 실행) register → login
+            있으면, 리프레시 토큰이 있으면 POST /auth/refresh (401 INVALID_REFRESH_TOKEN이면 login), 없으면 login
+API 호출  : 401 UNAUTHORIZED          → POST /auth/refresh 로 새 토큰을 받아 같은 요청을 한 번 재시도
+            POST /auth/refresh → 401 INVALID_REFRESH_TOKEN → guestId·guestSecret으로 다시 로그인한 뒤 재시도
 ```
+
+- 기기에 저장하는 값은 `guestId`, `guestSecret`, `refreshToken`이다. 액세스 토큰은 메모리에만 두어도 된다(앱을 켜면 위의 "앱 시작"으로 다시 받는다).
+- 갱신 응답의 새 `refreshToken`은 **받는 즉시 저장한다.** 옛 토큰은 이미 폐기됐다.
+- `401 UNAUTHORIZED`로 거부된 요청은 서버가 처리하지 않았으므로 재시도해도 이중으로 적용되지 않는다.
+- 갱신 요청은 한 번에 하나만 보낸다. 같은 토큰으로 겹쳐 보내면 한쪽은 `401`이고, 그 재사용 감지 때문에 이긴 쪽이 받은 새 토큰도 폐기된다.
+- 이 흐름의 실행 가능한 기준 구현은 `src/test/java/org/example/feedablackhole/support/FakeClient.java`이고, `Stage1ClientFlowTests`가 이 흐름 전체(최초 실행, 재시작, 토큰 만료, 새 게임, 기기 두 대, 동시 요청)를 실제 HTTP로 검증한다.
 
 ### POST `/auth/refresh`
 
