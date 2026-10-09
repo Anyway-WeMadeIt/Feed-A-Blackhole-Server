@@ -33,6 +33,7 @@ class BattleSummaryRequestTest {
 
         Instant receivedAt = Instant.now();
         BattleSummary summary = request.toEntity(json, receivedAt);
+        assertThat(summary.getSchemaVersion()).isEqualTo(2);
         assertThat(summary.getBattleId()).isEqualTo("3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b");
         assertThat(summary.getBattleIndex()).isEqualTo(27);
         assertThat(summary.getStartedAt()).isEqualTo(Instant.parse("2026-10-05T03:00:00Z"));
@@ -41,14 +42,22 @@ class BattleSummaryRequestTest {
     }
 
     // 게임이 값을 채우지 않고 보낸 경우(JsonUtility가 새 DTO를 쓴 모양). 빈 문자열과 0이 걸린다.
-    // contentVersion은 아직 ""가 정상이고, schemaVersion은 DTO 기본값(1)이 들어 있다.
+    // contentVersion은 아직 ""가 정상이고, schemaVersion은 DTO 기본값(2)이 들어 있다.
     @Test
     void rejectsUnfilledDto() {
         String json = """
-                {"schemaVersion":1,"battleId":"","installId":"","battleIndex":0,"buildVersion":"",
-                "contentVersion":"","startedAtUtc":"","endedAtUtc":"","playedSeconds":0.0,
-                "startGrowthStage":0,"nodes":[],"kills":[],"totalKills":0,"earnedGold":0,
-                "settledGold":0,"reachedLevel":0,"reachedMilestone":false}
+                {"schemaVersion":2,"battleId":"","installId":"","battleIndex":0,"buildVersion":"",
+                "contentVersion":"","platform":"","startedAtUtc":"","endedAtUtc":"","playedSeconds":0.0,
+                "seed":0,"startGrowthStage":0,"nodes":[],
+                "appliedStats":{"startLevel":0,"startExp":0,"goalLevel":0,"goalExp":0,
+                "timeLimitSeconds":0.0,"growthTimeSeconds":0.0,"breakerDamage":0.0,"breakerInterval":0.0,
+                "breakerRadius":0.0,"breakerCritChance":0.0,"breakerCritDamage":0.0,"traitChances":[],
+                "goldenAsteroidMultiplier":0.0},
+                "kills":[],"totalKills":0,"earnedGold":0,"settledGold":0,"reachedLevel":0,"exp":0,
+                "reachedMilestone":false,
+                "stats":{"breakerDamage":0.0,"breakerCriticalDamage":0.0,"breakerTicks":0,
+                "electricAsteroidDamage":0.0,"electricStarDamage":0.0,"laserDamage":0.0,"supernovaDamage":0.0,
+                "goldenAsteroidGold":0,"collectedMoons":0,"collectedComets":0,"addedSeconds":0.0}}
                 """;
         BattleSummaryRequest request = JSON_MAPPER.readValue(json, BattleSummaryRequest.class);
 
