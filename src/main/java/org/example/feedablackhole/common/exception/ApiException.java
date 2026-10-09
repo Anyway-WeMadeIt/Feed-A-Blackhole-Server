@@ -15,4 +15,12 @@ public class ApiException extends RuntimeException {
         this.errorCode = errorCode;
     }
 
+    /**
+     * 오류 코드의 기본 메시지 대신 상황에 맞는 설명을 담을 때. 클라이언트는 code로 분기하고 message는 디버깅용이다.
+     */
+    public ApiException(ErrorCode errorCode, String message) {
+        super(message);
+        this.errorCode = errorCode;
+    }
+
 }
