@@ -93,7 +93,8 @@ docker compose up -d        # MySQL 8.4 시작 (healthy가 될 때까지 몇 초
 
 - 스키마 변경은 `src/main/resources/db/migration/V<번호>__<설명>.sql` 파일로 추가합니다. 예: `V1__create_account.sql`
 - 이미 적용·병합된 파일은 수정하지 않고, 변경이 필요하면 새 번호의 파일을 추가합니다. 수정하면 Flyway가 체크섬 불일치로 시작을 거부합니다.
-- JPA는 `ddl-auto=validate`라서 엔티티와 스키마가 다르면 시작 단계에서 실패합니다.
+- JPA는 `ddl-auto=validate`라서 엔티티의 테이블·컬럼이 없거나 타입이 다르면, 그리고 유니크 제약·인덱스의 이름이나 컬럼 구성이 SQL과 다르면 시작 단계에서 실패합니다. (유니크·인덱스 검증은 `application.properties`의 `hibernate.tooling.schema.*_validation=ALL` 설정으로 켜 두었습니다.)
+- 컬럼 길이, `NOT NULL`, 외래키는 검증되지 않습니다. SQL을 바꾸면 엔티티도 직접 같이 고쳐 주세요.
 - 테스트도 같은 마이그레이션을 적용한 MySQL 컨테이너에서 실행됩니다.
 
 ## 환경 설정과 다음 단계

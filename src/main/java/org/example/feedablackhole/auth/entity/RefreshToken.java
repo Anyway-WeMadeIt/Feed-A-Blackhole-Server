@@ -25,9 +25,11 @@ import org.example.feedablackhole.common.entity.CreatedAtEntity;
  *
  */
 @Entity
-// 스키마의 원본은 Flyway SQL(V1). 아래 제약은 그것을 코드에서도 읽을 수 있게 옮겨 적은 것이며, 이름을 SQL과 같게 유지한다.
-// 실제 스키마와 어긋나도 ddl-auto=validate가 잡아주지 않는다. (이 어노테이션은 생성 시점에만 잡아준다)
-// SQL의 제약 이름이나 구성을 바꾸면, 엔티티도 같이 고쳐야 한다.
+// 스키마의 원본은 Flyway SQL(V1). 아래 제약은 그것을 코드에서도 읽을 수 있게 옮겨 적은 것이며, 이름과 컬럼 구성(순서 포함)을 SQL과 같게 유지한다.
+// 이 어노테이션이 스키마를 만들지는 않는다. (이 프로젝트는 Hibernate가 아닌 Flyway가 스키마를 만든다)
+// 유니크 제약은 ddl-auto=validate가 SQL과 같은지 검증한다. (application.properties의 unique_key_validation=ALL, Hibernate 7.3+)
+// 이름이나 컬럼 구성이 어긋나면 서버가 시작되지 않는다.
+// 컬럼 길이, NOT NULL, 외래키는 validate가 검증하지 않으므로, SQL을 바꾸면 엔티티도 직접 같이 고친다.
 // 같은 token_hash는 한 번만 존재한다. 갱신 요청이 토큰 해시로 행을 찾는 조회 경로다.
 @Table(
         name = "refresh_token",
