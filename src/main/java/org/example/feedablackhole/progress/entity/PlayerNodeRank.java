@@ -21,8 +21,10 @@ import org.example.feedablackhole.common.entity.BaseTimeEntity;
  * id가 자동 증가라 id 순서가 곧 "처음 산 순서"다(클라이언트가 저장 순서로 기억하는 값).
  */
 @Entity
-// 스키마의 원본은 Flyway SQL(V2). 아래 제약은 그것을 코드에서도 읽을 수 있게 옮겨 적은 것이며, 이름을 SQL과 같게 유지한다.
-// 실제 스키마와 어긋나도 ddl-auto=validate가 잡아주지 않으므로, SQL의 제약을 바꾸면 엔티티도 같이 고친다.
+// 스키마의 원본은 Flyway SQL(V2). 아래 제약은 그것을 코드에서도 읽을 수 있게 옮겨 적은 것이며, 이름과 컬럼 구성(순서 포함)을 SQL과 같게 유지한다.
+// 유니크 제약은 ddl-auto=validate가 SQL과 같은지 검증한다. (application.properties의 unique_key_validation=ALL, Hibernate 7.3+)
+// 이름이나 컬럼 구성이 어긋나면 서버가 시작되지 않는다.
+// 컬럼 길이, NOT NULL, 외래키는 validate가 검증하지 않으므로, SQL을 바꾸면 엔티티도 직접 같이 고친다.
 // 계정당 노드 하나. 저장할 때 이미 있는 노드인지 찾는 경로이기도 하다.
 @Table(
         name = "player_node_rank",

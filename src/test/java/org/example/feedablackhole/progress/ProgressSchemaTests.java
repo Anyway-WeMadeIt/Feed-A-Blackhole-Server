@@ -23,7 +23,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * Flyway가 만든 실제 MySQL 스키마(V2)와 진행 상태 엔티티·제약 조건이 맞는지 확인한다.
- * (ddl-auto=validate 이므로 엔티티와 스키마가 다르면 컨텍스트 로드부터 실패한다.)
+ * (ddl-auto=validate는 테이블·컬럼의 존재와 타입, 유니크 제약이 다르면 컨텍스트 로드부터 실패시킨다.
+ * 컬럼 길이, NOT NULL, 외래키는 검증하지 않으므로, 제약이 DB에서 실제로 동작하는지는 이 테스트의 저장 케이스로 확인한다.)
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
