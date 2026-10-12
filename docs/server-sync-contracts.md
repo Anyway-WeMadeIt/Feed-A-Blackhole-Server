@@ -1,15 +1,15 @@
 # 서버 연동 계약 (A0)
 
-- 상태: **작성 중** (2026-10-12). 1장(콘텐츠), 2장(클라이언트 인증) 확정, 3장(로그·동기화 JSON) 초안. 4장 이후는 단계별로 채운다.
+- 상태: **확정** (2026-10-12). 1장(콘텐츠), 2장(클라이언트 인증) 확정, 3장(로그·동기화 JSON), 4장(서버 스키마·처리기), 5장(클라이언트 로그와 동기화) 확정.
 - 이 문서는 [server-sync-plan.md](server-sync-plan.md)(계획서)의 설계를 **구현 가능한 형식과 시그니처**로 확정한다. 담당 간 경계는 이 문서가 기준이며, 변경은 A만 한다([작업지시](server-sync-assignment.md) 1장).
 
 | 장 | 내용 | 작업지시 ID | 상태 |
 |---|---|---|---|
 | 1 | 콘텐츠 묶음 형식, 서버 콘텐츠 객체, 전투 규칙 인터페이스 | A0-2, A0-3 | 확정 |
 | 2 | 클라이언트 인증 경계, 타임아웃 | A0-6 일부, A0-7 일부 | 확정 |
-| 3 | 로그·동기화 JSON | A0-1 | 초안 |
-| 4 | 서버 스키마, 처리기 인터페이스 | A0-4, A0-5 | 예정 |
-| 5 | 클라이언트 로그·저장 경계, 나머지 수치 | A0-6, A0-7 | 예정 |
+| 3 | 로그·동기화 JSON | A0-1 | 확정 |
+| 4 | 서버 스키마, 처리기 인터페이스 | A0-4, A0-5 | 확정 |
+| 5 | 클라이언트 로그·저장 경계, 나머지 수치 | A0-6, A0-7 | 확정 |
 
 ---
 
@@ -457,7 +457,7 @@ namespace BlackHole.Net
         Unreachable,         // 네트워크 오류, 타임아웃, 5xx, 시간 예산 초과
         CredentialsRejected, // 저장된 guestId·guestSecret이 거부됨(2.7)
         ProtocolError,       // 예상하지 못한 응답(400, 형식 오류 등). 버그
-        ContentOutdated,     // 동기화가 CONTENT_VERSION_MISMATCH로 거부됨(3.6). 클라이언트 업데이트가 필요하다
+        ContentOutdated,     // 동기화가 CONTENT_VERSION_MISMATCH로 거부됨(3.6). 클라이언트 업데이트가 필요하다. (추후 구현, 아래 참고)
     }
 
     // 로그인한 세션. 동기화(3장)가 이걸로 요청에 토큰을 붙이고, 401이면 갱신한다.
@@ -560,7 +560,7 @@ namespace BlackHole.Net
 | `Offline(Disabled)` | 표시 없음 |
 | `Offline(Unreachable)` | "오프라인 — 기록은 다음 접속 때 반영됩니다" |
 | `Offline(CredentialsRejected)`, `Offline(ProtocolError)` | "오프라인 — 계정을 확인할 수 없습니다" |
-| `Offline(ContentOutdated)` | "오프라인 — 게임 데이터가 서버와 다릅니다. 업데이트가 필요합니다" |
+| `Offline(ContentOutdated)` | "오프라인 — 게임 데이터가 서버와 다릅니다. 업데이트가 필요합니다" (추후 구현) |
 
 - **로그인과 시작 동기화가 끝날 때까지 시작 버튼을 막는다.** 시작 동기화가 끝나야 진행도가 확정되기 때문이다. 동기화(3장)가 구현되기 전까지는 로그인이 끝나면(`Online` 또는 `Offline`) 푼다.
 - 시작 버튼을 막는 최대 시간은 `loginBudgetSeconds + syncTimeoutSeconds`(기본 18초)다. 서버에 닿지 않을 때는 대부분 연결 오류가 곧바로 와서 훨씬 짧다.
@@ -720,6 +720,7 @@ W2-1·W2-2가 채울 것:
 
 - 검사 순서는 3.4의 순서, 타입별 규칙 안에서는 위 표의 순서이고, 처음 걸린 것 하나만 알린다.
 - 클라이언트는 `CONTENT_VERSION_MISMATCH`를 받으면 다른 거부와 같이 처리(대기 로그 폐기, 서버 진행도 채택)한 뒤, **이번 실행을 오프라인(`ContentOutdated`)으로 바꾼다.** 버전이 다른 채로 계속 보내면 로그마다 거부되어 진행도가 되돌아가기 때문이다.
+- **구현 시점**: 서버의 거부(`CONTENT_VERSION_MISMATCH`)는 이번 범위에서 구현한다. 클라이언트의 `ContentOutdated` 전환과 표시는 **추후 구현**이며, 그 전까지 클라이언트는 이 코드를 다른 거부와 똑같이 처리한다. `OfflineReason.ContentOutdated` 값은 W2 작업에서 추가하지 않아도 된다.
 - `message`는 사람이 읽는 설명이며 형식을 정하지 않는다.
 - `RUN_START`의 값 불일치는 거부가 아니므로 코드가 없다. 의심 표시의 사유는 4장에서 정한다.
 
@@ -755,7 +756,7 @@ API 명세의 형식 그대로다. `progress`는 `GET /me/progress`와 같은 �
 - 클라이언트 로그 생성기(W3-2)가 만든 JSON은 이 샘플과 **같은 키·같은 타입**이어야 한다(키 순서와 공백은 달라도 된다). W4-3의 계약 테스트가 이것을 확인한다.
 - 서버 처리기 테스트(W1-3, W1-5, W1-6)와 E2E(W1-8)는 이 샘플을 기본 시나리오로 쓴다.
 
-### 3.9 결정 사항 (3장)
+### 3.9 결정 사항 (3장, 확정)
 
 | # | 결정 | 이유 |
 |---|---|---|
@@ -764,3 +765,464 @@ API 명세의 형식 그대로다. `progress`는 `GET /me/progress`와 같은 �
 | C14 | 한도: 요청당 500개, 1 MB. 클라이언트가 나눠 보낸다 | 오프라인으로 쌓인 로그도 몇 번의 요청으로 보낸다 |
 | C15 | 정의되지 않은 필드는 무시한다 | 필드를 더할 때 옛 서버가 거부하지 않는다 |
 | C16 | `contentVersion`이 서버와 다르면 `CONTENT_VERSION_MISMATCH`로 거부한다. 클라이언트는 그 실행을 오프라인(`ContentOutdated`)으로 바꾼다 | 계획서 D3. 최근 몇 버전의 규칙을 보관해 하위 호환을 허용하는 것은 후속 과제(W5-3) |
+
+---
+
+## 4. 서버 스키마와 처리기
+
+동기화 엔진(W1-2, A)과 로그 타입별 처리기(W1-3·W1-5 B, W1-6 A)의 경계를 정한다. 엔진은 요청을 받아 로그를 하나씩 처리기에 넘기고, 처리기는 검증하고 진행도를 바꾼다.
+
+### 4.1 책임 나누기
+
+| 단계 | 담당 | 내용 |
+|---|---|---|
+| 요청 형식 | 엔진 | `logs` 배열, `seq` 읽기·연속성(3.4의 400), 한도(413) |
+| 잠금 | 엔진 | 계정 진행도 행을 `PESSIMISTIC_WRITE`로 잠근다. 요청 하나가 트랜잭션 하나 |
+| seq | 엔진 | 이미 반영됨 → 건너뜀, 누락 → `SEQ_GAP` |
+| 형식 | 엔진 | 공통 필드와 `payload`를 3.3에 맞춰 읽고 검사 → 어긋나면 `MALFORMED_LOG`. 처리기는 **검사를 통과한 payload만** 받는다 |
+| 콘텐츠 버전 | 엔진 | 서버 `contentVersion`과 비교 → `CONTENT_VERSION_MISMATCH` |
+| 규칙 검사와 적용 | 처리기 | 타입별 규칙(계획서 6.2). 통과하면 `SyncContext`로 진행도를 바꾼다 |
+| 기록·응답 | 엔진 | `sync_log` 기록, `lastAppliedSeq` 갱신, 응답 |
+
+- 처리기는 HTTP, JSON, 저장소(Repository)를 모른다. `SyncContext`(4.3)와 콘텐츠 빈(`NodeTree`, `BattleContent`), `BattleRules`만 쓴다.
+- 처리기는 **검사를 모두 마친 뒤에만** `SyncContext`의 변경 메서드를 부른다. 거부할 때는 아무것도 바꾸지 않는다. 엔진은 거부와 함께 변경이 있었으면 버그로 보고 예외를 던진다(요청 전체가 롤백되고 500).
+- 처리 중 예상하지 못한 예외는 요청 전체를 롤백하고 500이다. 클라이언트는 서버에 닿지 않은 것으로 보고 로그를 지우지 않는다(2.1).
+
+### 4.2 스키마 (V3)
+
+```sql
+-- 진행도: 마지막으로 반영한 로그 seq, 열린 판, 의심 표시 수.
+ALTER TABLE player_progress
+    ADD COLUMN last_applied_seq BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN open_run_id      BIGINT NULL,
+    ADD COLUMN suspicious_count INT    NOT NULL DEFAULT 0,
+    ADD CONSTRAINT ck_player_progress_last_applied_seq CHECK (last_applied_seq >= 0),
+    ADD CONSTRAINT ck_player_progress_suspicious_count CHECK (suspicious_count >= 0);
+
+-- 판 하나(RUN_START로 열고 SETTLEMENT로 결산, 또는 포기로 닫는다).
+CREATE TABLE battle_run (
+    id                 BIGINT       NOT NULL AUTO_INCREMENT,
+    account_id         BIGINT       NOT NULL,
+    run_id             CHAR(36)     NOT NULL,
+    status             VARCHAR(16)  NOT NULL,      -- OPEN, SETTLED, ABANDONED
+    seed               INT          NOT NULL,
+    start_growth_stage INT          NOT NULL,      -- 서버 진행도 기준(클라이언트가 보낸 값이 아님)
+    start_gold         BIGINT       NOT NULL,      -- 서버 진행도 기준
+    started_seq        BIGINT       NOT NULL,
+    ended_seq          BIGINT       NULL,
+    settled_gold       BIGINT       NULL,          -- 서버가 계산한 결산 금액
+    next_growth_stage  INT          NULL,
+    suspicious_reasons VARCHAR(255) NULL,          -- 의심 사유 코드를 쉼표로(4.4)
+    created_at         DATETIME(6)  NOT NULL,
+    updated_at         DATETIME(6)  NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uk_battle_run_account_run UNIQUE (account_id, run_id),
+    CONSTRAINT fk_battle_run_account FOREIGN KEY (account_id) REFERENCES account (id)
+);
+
+ALTER TABLE player_progress
+    ADD CONSTRAINT fk_player_progress_open_run FOREIGN KEY (open_run_id) REFERENCES battle_run (id);
+
+-- 받은 로그(감사·진단). 같은 seq가 여러 번 올 수 있다(재전송, 거부 뒤 재사용).
+CREATE TABLE sync_log (
+    id              BIGINT      NOT NULL AUTO_INCREMENT,
+    account_id      BIGINT      NOT NULL,
+    seq             BIGINT      NOT NULL,
+    type            VARCHAR(32) NOT NULL,          -- 받은 글자 그대로. 읽지 못했으면 ''
+    result          VARCHAR(16) NOT NULL,          -- APPLIED, REJECTED, SKIPPED, NOT_PROCESSED
+    reject_code     VARCHAR(40) NULL,
+    content_version VARCHAR(64) NOT NULL,          -- 읽지 못했거나 너무 길면 ''
+    build_version   VARCHAR(32) NOT NULL,
+    raw_json        JSON        NOT NULL,          -- 받은 로그 객체 그대로
+    received_at     DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    INDEX ix_sync_log_account_seq (account_id, seq),
+    CONSTRAINT fk_sync_log_account FOREIGN KEY (account_id) REFERENCES account (id)
+);
+```
+
+- `revision` 열은 옛 저장 API를 없앨 때(W1-7) 함께 지운다(V4, A가 작성).
+- `battle_run`은 계정 안에서 `run_id`가 유일하다. 다른 계정과 겹쳐도 상관없다.
+- `NOT_PROCESSED`는 거부된 로그 뒤에 있어 처리하지 않은 로그다.
+
+### 4.3 처리기 인터페이스 (Java)
+
+패키지 `org.example.feedablackhole.sync`.
+
+```java
+// sync.log
+public enum LogType { RUN_START, SETTLEMENT, NODE_PURCHASE, RESET }
+
+public enum RejectCode {
+    SEQ_GAP, MALFORMED_LOG, CONTENT_VERSION_MISMATCH,
+    UNKNOWN_NODE, MAX_RANK_REACHED, NODE_HIDDEN, NOT_ENOUGH_GOLD, RANK_MISMATCH, COST_MISMATCH,
+    DUPLICATE_RUN_ID,
+    RUN_NOT_OPEN, SETTLEMENT_INVALID_KILLS, SETTLEMENT_EXP_MISMATCH, SETTLEMENT_GOLD_MISMATCH,
+    SETTLEMENT_TIME_EXCEEDED, SETTLEMENT_RESULT_MISMATCH
+}
+
+// sync.log.payload: 3.3의 payload. 엔진이 형식 검사(Bean Validation + 중복·유한성 검사)를 마친 뒤 처리기에 넘긴다.
+// 코드에서는 누락을 잡기 위해 감싼 타입(Integer, Long, Float, Boolean)과 검증 애너테이션을 쓴다. 처리기가 받을 때는 null인 필드가 없다.
+public record NodePurchasePayload(String nodeId, int rank, long cost) {}
+public record ResetPayload() {}
+public record RunStartPayload(String runId, int seed, int startGrowthStage, long startGold, int startLevel,
+                              float timeLimitSeconds, List<SupplyItem> startSupply) {
+    public record SupplyItem(String enemyId, int count) {}
+}
+public record SettlementPayload(String runId, float playedSeconds, List<KillItem> kills,
+                                int goldenCritCount, long goldenCritBonusGold, long earnedGold, long exp,
+                                int reachedLevel, boolean reachedMilestone, int timeBonusCount,
+                                long settledGold, int nextGrowthStage) {
+    public record KillItem(String enemyId, int tier, int size, boolean golden, int count) {}
+}
+
+// sync.handler
+public interface LogHandler<P> {
+    LogType type();
+    Class<P> payloadType();
+    /** 규칙을 검사하고, 통과하면 context로 진행도를 바꾼다. 거부하면 아무것도 바꾸지 않는다. */
+    HandleResult handle(P payload, SyncContext context);
+}
+
+public sealed interface HandleResult {
+    record Applied() implements HandleResult {}
+    record Rejected(RejectCode code, String message) implements HandleResult {}
+    static HandleResult applied();
+    static HandleResult rejected(RejectCode code, String message);
+}
+
+/** 처리 중인 계정의 진행도. 엔진이 잠근 엔티티 위에 구현한다. 처리기는 이것만으로 읽고 바꾼다. */
+public interface SyncContext {
+    long accountId();
+    long seq();                              // 지금 처리 중인 로그의 seq
+
+    // ---- 읽기 ----
+    long gold();
+    int growthStage();
+    Map<String, Integer> nodeRanks();        // 산 노드(nodeId → rank), 처음 산 순서, 읽기 전용
+    Optional<OpenRun> openRun();
+    boolean runIdUsed(String runId);         // 이 계정에서 이미 쓴 runId인가
+
+    // ---- 변경 (검사를 모두 통과한 뒤에만) ----
+    void spendGold(long amount);             // amount ≤ gold()
+    void earnGold(long amount);
+    void setNodeRank(String nodeId, int rank);  // 새 노드면 처음 산 순서의 끝에 붙는다
+    void setGrowthStage(int growthStage);
+    void resetProgress();                    // Gold 0, 성장도 0, 산 노드 없음. 열린 판은 포기로 닫는다
+    void abandonOpenRun();                   // 열린 판이 없으면 아무것도 하지 않는다
+    void openRun(RunStartPayload payload, List<SuspicionReason> suspicions);
+                                             // 열린 판이 있으면 먼저 abandonOpenRun()을 부른다(처리기 책임)
+    void settleOpenRun(long settledGold, int nextGrowthStage);
+                                             // 열린 판을 결산 완료로 닫는다. Gold·성장도 반영은 earnGold·setGrowthStage로 따로 한다
+}
+
+/** 열린 판. 판 시작 때 서버 진행도 기준의 값. */
+public record OpenRun(String runId, int seed, int startGrowthStage, long startGold, long startedSeq) {}
+
+/** RUN_START가 서버 계산과 다를 때 남기는 의심 사유(4.4). */
+public enum SuspicionReason {
+    START_GROWTH_STAGE_MISMATCH, START_GOLD_MISMATCH, START_LEVEL_MISMATCH,
+    TIME_LIMIT_MISMATCH, START_SUPPLY_MISMATCH
+}
+```
+
+- 처리기는 Spring 빈으로 등록하고, 엔진은 `LogHandler` 빈들을 `type()`으로 찾는다. 타입마다 정확히 하나여야 한다(시작 시 확인).
+- 결산 처리기는 판을 닫는 것(`settleOpenRun`)과 진행도 반영(`earnGold`, `setGrowthStage`)을 둘 다 부른다.
+
+### 4.4 의심 표시
+
+- `RUN_START`의 `startGrowthStage`, `startGold`, `startLevel`, `timeLimitSeconds`, `startSupply`를 서버 계산과 비교해, 다른 것마다 `SuspicionReason`을 하나씩 남긴다. 거부하지 않고 판은 연다(계획서 D8).
+- `timeLimitSeconds`는 `|클라이언트 − 서버| ≤ 0.001`이면 같다고 본다. 나머지는 정확히 같아야 한다(`startSupply`는 순서까지).
+- 사유가 하나 이상이면 그 판의 `suspicious_reasons`에 쉼표로 적고, 계정의 `suspicious_count`를 1 올린다(판 하나당 1).
+- 의심 표시는 기록일 뿐이며 이후 처리에 영향을 주지 않는다. 조회 API는 만들지 않는다(DB에서 본다).
+
+### 4.5 결정 사항 (4장, 확정)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| C17 | 형식 검사(3.3)와 seq·버전 검사는 엔진, 규칙 검사는 처리기 | 처리기는 형식이 맞는 payload만 다루고, 거부 코드의 위치가 한곳에 모인다 |
+| C18 | 처리기는 `SyncContext`로만 진행도를 읽고 바꾸며, 거부할 때는 바꾸지 않는다 | 처리기가 저장소와 트랜잭션을 몰라도 된다. 한 로그 안에서 일부만 반영되는 일이 없다 |
+| C19 | 요청 하나가 트랜잭션 하나. 거부는 커밋, 예상하지 못한 예외는 전체 롤백(500) | 거부 직전까지는 반영하고, 버그로 진행도가 어긋나는 일은 없게 한다 |
+| C20 | `battle_run`의 시작 Gold·성장도는 서버 진행도 값으로 적는다 | 결산 검증의 기준은 서버 값이다 |
+| C21 | `revision` 열은 W1-7(옛 API 제거) 때 지운다 | 옛 API와 그 테스트가 W1-7 전까지 그대로 돌게 한다 |
+| C22 | `timeLimitSeconds` 비교 허용 오차 0.001초 | 같은 float 계산이면 같은 값이 나오므로 작게 둔다 |
+
+### 4.6 산출물
+
+서버 저장소 `dev` 기준.
+
+| 산출물 | 위치 | 상태 |
+|---|---|---|
+| V3 마이그레이션 | `src/main/resources/db/migration/V3__create_sync_tables.sql` | 완료(= W1-1) |
+| 엔티티·저장소 | `PlayerProgress`(열 3개 추가), `sync/entity/BattleRun`, `BattleRunStatus`, `SyncLogRecord`, `SyncLogResult`, `sync/repository/*` | 완료. 진행도·판 변경 메서드는 W1-2에서 필요한 만큼 더한다 |
+| 로그 타입·거부 코드·payload | `sync/log/LogType`, `RejectCode`, `sync/log/payload/*` | 완료 |
+| 처리기 경계 | `sync/handler/LogHandler`, `HandleResult`, `SyncContext`, `OpenRun`, `SuspicionReason` | 완료(구현 없음) |
+| 테스트 | `SyncSchemaTests`(6개) | 통과 |
+
+- `sync_log` 테이블의 엔티티 이름은 `SyncLogRecord`다(로그 자체와 구분).
+- 1장의 코드(`content/`, `battle/`)는 `feat/load-battle-content` 브랜치에만 있고 `dev`에는 아직 없다. 4장 코드는 그것에 의존하지 않는다. 처리기 구현(W1-3, W1-5, W1-6)이 `NodeTree`·`BattleRules`를 쓰므로, W0-3이 `dev`에 병합된 뒤 시작한다.
+
+---
+
+## 5. 클라이언트 로그와 동기화
+
+클라이언트가 로그를 만들고(W3-1 C, W3-2 A), 진행도와 함께 저장하고(W3-3 A), 서버로 보내고 응답을 반영하는(W3-4 C, W3-5 C) 경계를 정한다.
+
+### 5.1 흐름
+
+```
+[게임]  판 시작·결산·노드 구매·새 게임
+   │  ① 로컬 진행도에 바로 반영(지금과 같음)
+   │  ② 로그 생성(SyncLogFactory, W3-2) → JSON 글자 하나
+   │  ③ 진행도 + 로그를 한 번에 저장(ISyncStore, W3-3) → LogAppended 이벤트
+   ▼
+[전송]  SyncSender(W3-4)
+   │  앱 시작: 로그인 끝나면 쌓인 로그 전부(없으면 빈 배열) 전송 → 응답 반영 → 시작 버튼 풀림
+   │  온라인 중: LogAppended마다 전송(동시에 하나만)
+   │  ④ ISyncApi.SendAsync(로그들) (W3-4) → 서버
+   │  ⑤ ISyncStore.ApplyResponse(응답) (W3-3) → 로그 정리, 필요하면 진행도 덮어쓰기, 거부 기록
+   ▼
+[표시]  거부 기록이 있으면 타이틀·업그레이드 화면에 한 번 알림(W3-5)
+```
+
+### 5.2 어셈블리
+
+| 어셈블리 | Unity 의존 | 내용 | 담당 |
+|---|---|---|---|
+| `BlackHole.Net` (2장) | 없음 | 동기화 DTO(5.4), `SyncJson`(5.5), `ISyncApi`, `ISyncStore`, `PendingLog` 등(5.6) | A(타입), C(`ISyncApi` 구현) |
+| `BlackHole.Sync` (신규) | 없음 | `SyncLogFactory`: 코어 객체(진행도, 판, 결산 결과)로 로그 JSON을 만든다. `BlackHole.Core.*`와 `BlackHole.Net`을 참조 | A |
+| Assembly-CSharp | 있음 | `ISyncStore` 구현(진행 저장과 함께, `Save/`), `SyncSender`, 연결 코드, 알림 UI | A(저장), C(전송·UI) |
+
+- `SyncLogFactory`를 Unity 밖에 두는 이유: `Tools/Simulation`(net8.0)이 캠페인 전체 로그를 만들 때(W4-2a) 같은 코드를 쓴다. 그때 `IJsonSerializer`는 `System.Text.Json`(`IncludeFields = true`)으로 구현한다.
+
+### 5.3 코어에 더할 것
+
+**W3-1 (C): 칸별 처치 집계** — `BlackHole.Core`
+
+```csharp
+// 처치 장부의 칸: (종류, 색 등급, 크기, 황금 여부). 수거형(혜성)은 tier 0, size 1, golden false.
+public readonly struct KillBucket : IEquatable<KillBucket>
+{
+    public EnemyDefinition Enemy { get; }
+    public int Tier { get; }        // 0부터
+    public int Size { get; }        // 1부터
+    public bool Golden { get; }     // 성질이 황금(GoldenDefinition)인가
+    public KillBucket(EnemyDefinition enemy, int tier, int size, bool golden);
+}
+
+public readonly struct KillBucketCount
+{
+    public KillBucket Bucket { get; }
+    public int Count { get; }       // 1 이상
+}
+
+// BattleRawData에 더한다(기존 속성은 그대로).
+public IReadOnlyList<KillBucketCount> KillBuckets { get; }   // 처음 처치한 순서, 0인 칸 없음
+public int GoldenCritCount { get; }                           // 황금 보너스 치명 횟수
+public long GoldenCritBonusGold { get; }                      // 그 보너스 Gold 합
+public int TimeBonusCount { get; }                            // 처치 시 시간 추가 성공 횟수
+```
+
+- 세는 시점은 기존 처치 수·Gold와 같은 곳(사망 확정 순간, `EnemyRoster`, `DeathRewards`, `DeathBonuses`)이다.
+- 판이 끝난 뒤 치운 적(`ClearRemainingEnemies`)과 테스트 도구가 치운 적은 세지 않는다(지금의 처치 수와 같다).
+- 완료 조건(작업지시 W3-1): `시작 EXP + Σ(칸 수 × 칸 EXP) == Hq.Exp`, `Σ(칸 수 × 칸 Gold) + GoldenCritBonusGold == EarnedGold`.
+
+**W3-2 (A): 판 시작 정보** — `GameSession`에 더한다.
+
+```csharp
+public RunStartInfo StartInfo { get; }   // 판을 만들 때 정해진 값
+
+public sealed class RunStartInfo
+{
+    public int Seed { get; }
+    public int GrowthStage { get; }
+    public int StartLevel { get; }
+    public float TimeLimitSeconds { get; }               // 노드가 반영된 시작 제한 시간
+    public IReadOnlyList<SupplyRequest> StartSupply { get; }
+}
+```
+
+- `GameSession.cs`는 C(W3-1, `CreateRawData` 부분)와 A(W3-2, `StartInfo` 부분)가 함께 고친다. 서로 다른 부분만 고친다.
+
+### 5.4 동기화 DTO (`BlackHole.Net`)
+
+3장의 JSON과 키·타입이 같은 `[Serializable]` 클래스다. `JsonUtility` 규칙(public 필드, camelCase, null 없음)을 따른다.
+
+| DTO | 쓰임 |
+|---|---|
+| `NodePurchasePayloadDto`, `RunStartPayloadDto`(+`SupplyDto`), `SettlementPayloadDto`(+`KillDto`), `ResetPayloadDto`(필드 없음) | 로그 payload |
+| `SyncResponseDto` { `appliedThroughSeq`, `rejected`, `contentVersion`, `progress` } | 응답 |
+| `RejectedLogDto` { `seq`, `type`, `code`, `message` } | 응답의 `rejected`. **`code`가 빈 문자열이면 거부 없음**(3.7) |
+| `ProgressDto` { `lastAppliedSeq`, `gold`, `growthStage`, `nodes`, `updatedAt` } + `ProgressNodeDto` { `nodeId`, `rank` } | 응답의 `progress`. 통계 전송의 `BlackHole.Analytics.NodeRankDto`와 이름이 겹치지 않게 했다 |
+
+- `LogTypes` 상수: `RunStart = "RUN_START"`, `Settlement = "SETTLEMENT"`, `NodePurchase = "NODE_PURCHASE"`, `Reset = "RESET"`.
+- `RejectCodes` 상수: 3.6의 코드 전체.
+
+### 5.5 로그 JSON 만들기 (`SyncJson`, `BlackHole.Net`)
+
+`JsonUtility`는 타입마다 다른 `payload`를 쓰지 못하므로(C12) 봉투는 글자로 합친다.
+
+```csharp
+public static class SyncJson
+{
+    // 로그 하나: {"seq":…,"type":"…","occurredAtUtc":"…","buildVersion":"…","contentVersion":"…","payload":<payloadJson>}
+    // 문자열은 JSON 규칙대로 이스케이프한다. payloadJson은 IJsonSerializer.ToJson(payload DTO)의 결과를 그대로 넣는다.
+    public static string ComposeLog(long seq, string type, string occurredAtUtc, string buildVersion,
+                                    string contentVersion, string payloadJson);
+
+    // 요청 본문: {"logs":[<log1>,<log2>,…]}. 로그 글자를 그대로 이어 붙인다.
+    public static string ComposeRequest(IEnumerable<string> logJsons);
+
+    // 요청 본문의 UTF-8 바이트 수(1 MB 한도 계산용).
+    public static int Utf8Length(string json);
+}
+```
+
+- `occurredAtUtc` 형식: `yyyy-MM-ddTHH:mm:ssZ` (UTC, 초 단위).
+- 이 클래스는 A0(5장 산출물)에서 구현하고, 3.8의 샘플과 키·타입이 같은지 테스트로 확인한다.
+
+### 5.6 저장·전송 경계 (`BlackHole.Net`)
+
+```csharp
+// 보낼 로그 하나. 만들 때 정한 JSON 글자를 바꾸지 않는다.
+public sealed class PendingLog
+{
+    public long Seq { get; }
+    public string Type { get; }      // LogTypes
+    public string Json { get; }      // SyncJson.ComposeLog의 결과
+}
+
+// 진행 저장과 함께 있는 로그 저장소(W3-3, A 구현). 메서드는 모두 메인 스레드에서 부른다.
+public interface ISyncStore
+{
+    // 아직 서버가 반영하지 않은 로그(seq 오름차순).
+    IReadOnlyList<PendingLog> Pending { get; }
+
+    // 새 로그가 쌓였을 때. 온라인이면 SyncSender가 이것을 보고 보낸다.
+    event Action LogAppended;
+
+    // 응답 하나를 반영한다(한 번의 원자적 저장). 규칙은 5.7.
+    SyncApplyOutcome ApplyResponse(SyncResponseDto response);
+
+    // 마지막으로 받은 거부. 없으면 null. 알림(W3-5)이 읽는다.
+    RejectedLogDto LastRejection { get; }
+    bool LastRejectionShown { get; }
+    void MarkLastRejectionShown();
+}
+
+public enum SyncApplyOutcome
+{
+    Applied,            // 거부 없음
+    AppliedWithDrift,   // 거부 없음, 남은 로그가 없는데 서버 진행도가 로컬과 달라 서버 값으로 맞춤(규칙 이식 버그 신호, 경고 로그)
+    Rejected,           // 거부 있음. 남은 로그 폐기, 서버 진행도로 덮어씀
+}
+
+// 동기화 요청 하나(W3-4, C 구현). 토큰은 IAuthSession에서 얻고, 401이면 RefreshAfterUnauthorizedAsync 후 한 번 다시 보낸다.
+public interface ISyncApi
+{
+    Task<SyncCallResult> SendAsync(IReadOnlyList<PendingLog> logs);
+}
+
+public sealed class SyncCallResult
+{
+    public SyncCallOutcome Outcome { get; }
+    public SyncResponseDto Response { get; }   // Outcome이 Response일 때만
+}
+
+public enum SyncCallOutcome
+{
+    Response,        // 200, 응답 본문을 읽었다
+    Unreachable,     // 네트워크 오류, 타임아웃, 5xx → 이번 실행은 오프라인(Unreachable)
+    Unauthorized,    // 갱신 후에도 401 → 오프라인(IAuthSession이 이미 바꿈)
+    ProtocolError,   // 400, 413, 형식이 맞지 않는 200 → 오프라인(ProtocolError), 오류 로그
+}
+```
+
+### 5.7 응답 반영 규칙 (`ApplyResponse`)
+
+요청을 보낸 뒤 응답을 기다리는 동안에도 게임은 계속되어 **새 로그가 쌓일 수 있다.** 그래서 서버 진행도로 덮어쓰는 것은 덮어써도 잃는 것이 없을 때만 한다.
+
+| 경우 | 처리 |
+|---|---|
+| 거부 없음, `appliedThroughSeq` 뒤에 남은 로그가 **있음** | 반영된 로그(`seq ≤ appliedThroughSeq`)만 지운다. **진행도는 덮어쓰지 않는다**(로컬 = 서버 + 남은 로그) |
+| 거부 없음, 남은 로그가 **없음** | 반영된 로그를 지운다. 서버 진행도가 로컬과 다르면 서버 값으로 덮어쓰고 경고 로그(`AppliedWithDrift`) |
+| 거부 있음 | 남은 로그를 **모두** 지운다(보낸 뒤 쌓인 것 포함, 계획서 D2). 서버 진행도로 덮어쓴다. 거부를 `LastRejection`에 기록(알림 전) |
+
+공통:
+
+- 다음 seq는 `appliedThroughSeq + 1`로 맞춘다. 단, 남은 로그가 있으면 `마지막 남은 로그의 seq + 1`이다.
+- 서버 진행도로 덮어쓸 때는 진행 저장의 "큰 값 유지"(`ProgressSave.Capture`)를 거치지 않는다. 덮어쓴 값이 그대로 저장된다.
+- 아직 새 게임·계속을 고르기 전(타이틀)이면, 덮어쓴 값은 "계속"으로 이어 할 저장이 된다.
+- 판이 진행 중일 때 덮어쓰게 되면(온라인 중 거부), 판은 그대로 진행하고 결산은 덮어쓴 진행도 위에 더해진다. 그 결산 로그는 열린 판이 서버와 맞지 않아 다시 거부될 수 있다. 드문 경우라 수용한다.
+
+### 5.8 전송 규칙 (`SyncSender`, W3-4)
+
+- **앱 시작**: `IAuthSession`이 `Online`이 되면 쌓인 로그를 전부 보낸다(없으면 빈 배열 하나). 이 동기화가 끝나거나(응답, 실패) `syncTimeoutSeconds`가 지나면 시작 버튼을 푼다(2.8). `Offline`이면 보내지 않고 바로 푼다.
+- **온라인 중**: `LogAppended`마다 보낸다. 요청은 **동시에 하나만** 보낸다. 보내는 중에 쌓인 로그는 응답을 반영한 뒤 이어서 보낸다.
+- **나눠 보내기**(3.5): 한 요청에 최대 500개, 본문 1 MB(`SyncJson.Utf8Length`) 이하. 앞 요청의 응답을 반영한 뒤 다음 요청을 보낸다. 거부가 나오면 멈춘다(남은 로그는 `ApplyResponse`가 이미 지웠다).
+- **실패**: `Unreachable`, `Unauthorized`, `ProtocolError`면 로그를 그대로 두고 이번 실행은 더 보내지 않는다(계획서 D9). 오프라인 사유는 `IAuthSession.GoOffline`으로 알린다.
+- **`CONTENT_VERSION_MISMATCH`**: 지금은 다른 거부와 똑같이 처리한다(3.6, `ContentOutdated` 전환은 추후).
+
+### 5.9 거부 알림 (W3-5)
+
+- `ISyncStore.LastRejection`이 있고 아직 보여 주지 않았으면, 타이틀 또는 업그레이드 화면에 들어갈 때 한 번 보여 주고 `MarkLastRejectionShown()`을 부른다.
+- 문구: **"서버에서 일부 기록을 받아들이지 않아 진행도를 서버 기준으로 맞췄습니다. ({종류}, {code})"**
+  - 종류: `RUN_START` 판 시작, `SETTLEMENT` 판 결산, `NODE_PURCHASE` 노드 구매, `RESET` 새 게임, 그 밖에는 기록.
+- 확인 버튼 하나짜리 기존 확인 창(`ConfirmPanel`)이나 작은 텍스트 중 화면에 맞는 것을 쓴다.
+
+### 5.10 저장 포맷 2 (W3-3, A)
+
+진행 저장(`progress.json`)에 동기화 상태를 더해, 진행도와 로그가 **한 파일, 한 번의 원자적 쓰기**로 저장되게 한다.
+
+```json
+{
+  "FormatVersion": 2,
+  "Gold": 18, "GrowthStage": 0, "Nodes": [ { "NodeId": "timer-01", "Rank": 1 } ], "SavedAtUtc": "…",
+  "Sync": {
+    "NextSeq": 4,
+    "Pending": [ { "Seq": 3, "Type": "NODE_PURCHASE", "Json": "{\"seq\":3,…}" } ],
+    "LastRejection": { "Seq": 0, "Type": "", "Code": "", "Message": "", "AtUtc": "", "Shown": true }
+  }
+}
+```
+
+- 포맷 1 파일을 읽으면 `Sync`는 처음 상태(`NextSeq` 1, 로그 없음)다.
+- 로그 하나를 쌓는 것은 "진행도 반영 + 로그 추가 + 저장"을 한 번에 한다. 진행도만 저장되고 로그가 빠지는 일이 없다.
+- 테스트 세션(테스트 도구가 진행도를 바꾼 실행)은 지금처럼 저장하지 않고, 로그도 만들지 않는다.
+
+### 5.11 수치와 문구
+
+| 항목 | 값 | 비고 |
+|---|---|---|
+| 로그인 전체 / 요청 / 동기화 요청 타임아웃 | 8 / 5 / 10초 | 2장 C11 |
+| 요청당 로그 수 / 본문 | 500개 / 1 MB | 3장 C14 |
+| 판 시작 제한 시간 비교 | 0.001초 | 4장 C22 |
+| 결산 시간 검사(S8) 허용 오차 | W1-6에서 결산 검증과 함께 정한다 | 서버 내부 값이라 클라이언트에 영향 없음 |
+| 거부 알림 문구 | 5.9 | |
+
+### 5.12 결정 사항 (5장, 확정)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| C23 | 로그 생성기(`SyncLogFactory`)는 Unity 밖의 새 어셈블리 `BlackHole.Sync`에 둔다 | 시뮬레이션 도구(net8.0)가 같은 코드로 캠페인 로그를 만든다(W4-2a) |
+| C24 | 진행도와 대기 로그를 `progress.json` 한 파일에 함께 저장한다(포맷 2) | 한 번의 원자적 쓰기로 둘이 어긋나지 않는다 |
+| C25 | 거부가 없으면 남은 로그가 있는 동안 서버 진행도로 덮어쓰지 않는다 | 응답을 기다리는 동안 생긴 로그의 효과를 잃지 않는다 |
+| C26 | 전송은 동시에 하나만, 나눈 요청은 앞 응답을 반영한 뒤 다음을 보낸다 | seq 순서와 거부 후 멈춤을 단순하게 보장한다 |
+| C27 | 결산 시간 검사(S8)의 허용 오차는 W1-6에서 정한다 | 서버 내부 값이고 결산 검증과 함께 보정해야 한다 |
+
+### 5.13 산출물
+
+클라이언트 저장소 `feat/logContract` 브랜치(`feat/serverConnection`에서 분기).
+
+| 산출물 | 위치 | 상태 |
+|---|---|---|
+| 동기화 DTO(5.4), `LogTypes`·`RejectCodes`·`SyncLimits` | `Assets/Scripts/Net/SyncDtos.cs`, `SyncCodes.cs` | 완료 |
+| `SyncJson`(5.5) | `Assets/Scripts/Net/SyncJson.cs` | **구현 완료** |
+| `PendingLog`, `ISyncStore`, `SyncApplyOutcome`, `ISyncApi`, `SyncCallResult`(5.6) | `Assets/Scripts/Net/` | 완료(구현 없음) |
+| `KillBucket`, `KillBucketCount`(5.3) | `Assets/Scripts/Core/Enemies/KillBucket.cs` | 타입 완료. 세는 일과 `BattleRawData` 속성은 W3-1 |
+| `RunStartInfo`(5.3) | `Assets/Scripts/Core/Battle/Session/RunStartInfo.cs` | 타입 완료. `GameSession.StartInfo` 연결은 W3-2 |
+| `BlackHole.Sync` 어셈블리, `SyncLogFactory` | `Assets/Scripts/Sync/` | 구매·새 게임 로그 완료, 판 시작·결산은 W3-2 |
+| 동기화 샘플(3.8) | `Assets/Tests/Net/SyncSamples/` | 서버와 같은 파일 |
+| 테스트 | `Assets/Tests/Net/SyncJsonTests.cs`(9개) | 통과. 구매·새 게임 로그가 샘플과 글자까지 같고, 응답 샘플을 DTO로 읽는다 |
+
+- 응답의 산 노드 DTO 이름은 `ProgressNodeDto`다(통계 전송의 `BlackHole.Analytics.NodeRankDto`와 겹치지 않게).

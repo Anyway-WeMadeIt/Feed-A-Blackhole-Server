@@ -24,9 +24,9 @@
 |---|---|---|---|---|
 | 1장 콘텐츠 | A0-2, A0-3 | **완료** | B의 W0-3·W1-4, A의 W0-1 | - |
 | 2장 클라이언트 인증 경계, 타임아웃 | A0-6 일부, A0-7 일부 | **완료** | C의 W2-1·W2-2·W2-3 | - |
-| 3장 로그·동기화 JSON | A0-1 | 예정 | B의 W1-3·W1-5, A의 W1-2·W3-2 | B 시작 후 5일 |
-| 4장 서버 스키마, 처리기 인터페이스 | A0-4, A0-5 | 예정 | B의 W1-3·W1-5, A의 W1-2 | B 시작 후 5일 |
-| 5장 클라이언트 로그·저장 경계, 나머지 수치 | A0-6, A0-7 | 예정 | C의 W3-1(`KillBucket`, 시작 후 5일)·W3-4, A의 W3-2·W3-3 | C 시작 후 5일 |
+| 3장 로그·동기화 JSON | A0-1 | **완료** | B의 W1-3·W1-5, A의 W1-2·W3-2 | B 시작 후 5일 |
+| 4장 서버 스키마, 처리기 인터페이스 | A0-4, A0-5 | **완료** | B의 W1-3·W1-5, A의 W1-2 | B 시작 후 5일 |
+| 5장 클라이언트 로그·저장 경계, 나머지 수치 | A0-6, A0-7 | **완료** | C의 W3-1(`KillBucket`, 시작 후 5일)·W3-4, A의 W3-2·W3-3 | C 시작 후 5일 |
 
 ## 2. 담당별 작업 요약
 
@@ -281,6 +281,9 @@ C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서
 | `Save/*`, `Core/Nodes/Save/*` | A | - |
 | `Core/Enemies/*`, `Core/Battle/World/*` | C(W3-1) | - |
 | `Assets/Scripts/Net/`의 인터페이스·타입(계약 2.4) | A | C는 구현 클래스를 추가한다. 인터페이스 변경이 필요하면 A에게 요청 |
+| `Assets/Scripts/Sync/`(`SyncLogFactory`), `Core/Battle/Session/RunStartInfo.cs` | A | - |
+| `Core/Battle/Session/GameSession.cs`, `BattleRawData.cs` | 함께 | C는 `CreateRawData`와 `BattleRawData`(W3-1), A는 `StartInfo`(W3-2)만 고친다 |
+| `Core/Enemies/KillBucket.cs` | A(타입) | C는 세는 코드에서 쓴다. 타입 변경이 필요하면 A에게 요청 |
 | 서버 `sync/`(루트), `content/`(묶음 목차·버전) | A | B는 `sync/handler/`만. `content/`는 읽기만 |
 | 서버 `battle/content/`, `battle/rules/` | B | A0-3 인터페이스 변경은 A |
 | 서버 `db/migration/` | A | 추가 마이그레이션이 필요하면 A에게 요청 |
