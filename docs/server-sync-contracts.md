@@ -1,6 +1,6 @@
 # 서버 연동 계약 (A0)
 
-- 상태: **작성 중** (2026-10-12). 1장(콘텐츠), 2장(클라이언트 인증) 확정, 3장(로그·동기화 JSON), 4장(서버 스키마·처리기) 확정, 5장(클라이언트 로그와 동기화) 초안.
+- 상태: **확정** (2026-10-12). 1장(콘텐츠), 2장(클라이언트 인증) 확정, 3장(로그·동기화 JSON), 4장(서버 스키마·처리기), 5장(클라이언트 로그와 동기화) 확정.
 - 이 문서는 [server-sync-plan.md](server-sync-plan.md)(계획서)의 설계를 **구현 가능한 형식과 시그니처**로 확정한다. 담당 간 경계는 이 문서가 기준이며, 변경은 A만 한다([작업지시](server-sync-assignment.md) 1장).
 
 | 장 | 내용 | 작업지시 ID | 상태 |
@@ -9,7 +9,7 @@
 | 2 | 클라이언트 인증 경계, 타임아웃 | A0-6 일부, A0-7 일부 | 확정 |
 | 3 | 로그·동기화 JSON | A0-1 | 확정 |
 | 4 | 서버 스키마, 처리기 인터페이스 | A0-4, A0-5 | 확정 |
-| 5 | 클라이언트 로그·저장 경계, 나머지 수치 | A0-6, A0-7 | 초안 |
+| 5 | 클라이언트 로그·저장 경계, 나머지 수치 | A0-6, A0-7 | 확정 |
 
 ---
 
@@ -1053,7 +1053,7 @@ public sealed class RunStartInfo
 | `NodePurchasePayloadDto`, `RunStartPayloadDto`(+`SupplyDto`), `SettlementPayloadDto`(+`KillDto`), `ResetPayloadDto`(필드 없음) | 로그 payload |
 | `SyncResponseDto` { `appliedThroughSeq`, `rejected`, `contentVersion`, `progress` } | 응답 |
 | `RejectedLogDto` { `seq`, `type`, `code`, `message` } | 응답의 `rejected`. **`code`가 빈 문자열이면 거부 없음**(3.7) |
-| `ProgressDto` { `lastAppliedSeq`, `gold`, `growthStage`, `nodes`, `updatedAt` } + `NodeRankDto` { `nodeId`, `rank` } | 응답의 `progress` |
+| `ProgressDto` { `lastAppliedSeq`, `gold`, `growthStage`, `nodes`, `updatedAt` } + `ProgressNodeDto` { `nodeId`, `rank` } | 응답의 `progress`. 통계 전송의 `BlackHole.Analytics.NodeRankDto`와 이름이 겹치지 않게 했다 |
 
 - `LogTypes` 상수: `RunStart = "RUN_START"`, `Settlement = "SETTLEMENT"`, `NodePurchase = "NODE_PURCHASE"`, `Reset = "RESET"`.
 - `RejectCodes` 상수: 3.6의 코드 전체.
@@ -1200,7 +1200,7 @@ public enum SyncCallOutcome
 | 결산 시간 검사(S8) 허용 오차 | W1-6에서 결산 검증과 함께 정한다 | 서버 내부 값이라 클라이언트에 영향 없음 |
 | 거부 알림 문구 | 5.9 | |
 
-### 5.12 결정 사항 (5장)
+### 5.12 결정 사항 (5장, 확정)
 
 | # | 결정 | 이유 |
 |---|---|---|
@@ -1209,3 +1209,20 @@ public enum SyncCallOutcome
 | C25 | 거부가 없으면 남은 로그가 있는 동안 서버 진행도로 덮어쓰지 않는다 | 응답을 기다리는 동안 생긴 로그의 효과를 잃지 않는다 |
 | C26 | 전송은 동시에 하나만, 나눈 요청은 앞 응답을 반영한 뒤 다음을 보낸다 | seq 순서와 거부 후 멈춤을 단순하게 보장한다 |
 | C27 | 결산 시간 검사(S8)의 허용 오차는 W1-6에서 정한다 | 서버 내부 값이고 결산 검증과 함께 보정해야 한다 |
+
+### 5.13 산출물
+
+클라이언트 저장소 `feat/logContract` 브랜치(`feat/serverConnection`에서 분기).
+
+| 산출물 | 위치 | 상태 |
+|---|---|---|
+| 동기화 DTO(5.4), `LogTypes`·`RejectCodes`·`SyncLimits` | `Assets/Scripts/Net/SyncDtos.cs`, `SyncCodes.cs` | 완료 |
+| `SyncJson`(5.5) | `Assets/Scripts/Net/SyncJson.cs` | **구현 완료** |
+| `PendingLog`, `ISyncStore`, `SyncApplyOutcome`, `ISyncApi`, `SyncCallResult`(5.6) | `Assets/Scripts/Net/` | 완료(구현 없음) |
+| `KillBucket`, `KillBucketCount`(5.3) | `Assets/Scripts/Core/Enemies/KillBucket.cs` | 타입 완료. 세는 일과 `BattleRawData` 속성은 W3-1 |
+| `RunStartInfo`(5.3) | `Assets/Scripts/Core/Battle/Session/RunStartInfo.cs` | 타입 완료. `GameSession.StartInfo` 연결은 W3-2 |
+| `BlackHole.Sync` 어셈블리, `SyncLogFactory` | `Assets/Scripts/Sync/` | 구매·새 게임 로그 완료, 판 시작·결산은 W3-2 |
+| 동기화 샘플(3.8) | `Assets/Tests/Net/SyncSamples/` | 서버와 같은 파일 |
+| 테스트 | `Assets/Tests/Net/SyncJsonTests.cs`(9개) | 통과. 구매·새 게임 로그가 샘플과 글자까지 같고, 응답 샘플을 DTO로 읽는다 |
+
+- 응답의 산 노드 DTO 이름은 `ProgressNodeDto`다(통계 전송의 `BlackHole.Analytics.NodeRankDto`와 겹치지 않게).
