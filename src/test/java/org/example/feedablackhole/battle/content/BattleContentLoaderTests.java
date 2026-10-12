@@ -1,11 +1,14 @@
 package org.example.feedablackhole.battle.content;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import org.example.feedablackhole.node.content.ContentLoadException;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * BattleContentLoader가 battle.json을 BattleContent로 올바르게 읽는지 확인하는 테스트.
@@ -51,4 +54,24 @@ class BattleContentLoaderTests {
         }
     }
 
+    /**
+     * enemyId가 중복된 battle.json을 로더에 넣으면, 문제를 모아서 ContentLoadException으로 알리는지 확인한다.
+     * 검증 규칙 1(enemyId 유일)과 규칙 2(upgradesTo가 존재하는 종류를 가리킴)가 함께 걸린다.
+     */
+    @Test
+    void duplicateEnemyIdIsRejected() throws IOException {
+        // 정상인 샘플 battle.json에서 planet의 id를 asteroid로 바꿔, 일부러 규칙을 어긴 입력을 만든다
+        // (이제 asteroid가 두 개이고, planet은 없다)
+        String broken = read().replace("\"enemyId\": \"planet\",", "\"enemyId\": \"asteroid\",");
+
+        // load를 호출하면 예외가 던져져야 테스트가 통과한다. 던져지지 않으면 실패한다
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                // 던져진 예외의 종류가 ContentLoadException인지 확인 (NPE 등 다른 예외면 실패)
+                .isInstanceOf(ContentLoadException.class)
+                // 문제 1: asteroid가 두 번 나와서 "중복됐다"
+                .hasMessageContaining("중복")
+                // 문제 2: 소행성의 upgradesTo가 가리키던 planet이 없어져서 "변환 대상이 없다".
+                // 이것까지 메시지에 있어야, 문제를 하나에서 멈추지 않고 모아서 보고한다는 뜻이다
+                .hasMessageContaining("변환 대상");
+    }
 }

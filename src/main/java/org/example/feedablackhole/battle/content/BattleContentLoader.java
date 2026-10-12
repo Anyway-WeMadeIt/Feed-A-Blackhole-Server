@@ -1,27 +1,53 @@
 package org.example.feedablackhole.battle.content;
 
+import org.example.feedablackhole.node.content.ContentDiagnostic;
+import org.example.feedablackhole.node.content.ContentLoadException;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+/**
+ * 전투 콘텐츠 파일(battle.json)의 글자를 읽어 BattleContent로 만든다.
+ *
+ * <p>두 단계로 동작한다.
+ * <ol>
+ * <li>읽기: JSON을 Map/List로 읽은 뒤, 이미 있는 record(BattleContent 등)로 옮겨 담는다.
+ * <li>검증: 다 만든 뒤 규칙을 검사하고, 어긴 곳을 모아서 ContentLoadException 하나로 던진다.
+ * </ol>
+ */
 public class BattleContentLoader {
+    // 예외 메시지와 진단에 쓰는 이름 ("전투 콘텐츠을(를) 불러오지 못했다", "battle.json: ...")
+    private static final String WHAT = "전투 콘텐츠";
+    private static final String FILE = "battle.json";
 
-    // battle.json의 키 이름
+    // ---------- battle.json의 키 이름 ----------
+
+    // rules
     private static final String RULES = "rules";
     private static final String TIME_LIMIT_SECONDS = "timeLimitSeconds";
     private static final String KILL_TIME_BONUS_SECONDS = "killTimeBonusSeconds";
+
+    // growth
     private static final String GROWTH = "growth";
     private static final String LEVEL_EXP = "levelExp";
     private static final String MILESTONES = "milestones";
     private static final String LEVEL = "level";
     private static final String TARGET_GOLD = "targetGold";
+
+    // 최상위 stats(timer, growthTime)와 각 적 종류 안의 stats가 같은 키 이름을 쓴다
     private static final String STATS = "stats";
     private static final String TIMER = "timer";
     private static final String GROWTH_TIME = "growthTime";
+
+    // enemies
     private static final String ENEMIES = "enemies";
     private static final String ENEMY_ID = "enemyId";
     private static final String PICK_UP = "pickup";
@@ -34,9 +60,11 @@ public class BattleContentLoader {
     private static final String MULTIPLIER = "multiplier";
     private static final String CRIT_CHANCE = "critChance";
     private static final String CRIT_REWARD_SCALE = "critRewardScale";
+
+    // enemies[i].stats: 이 종류의 판 구성에 닿는 수치의 statId들
     private static final String MASS = "mass";
     private static final String SIZE = "size";
-    private static final String START_SUPPLY = "startSupply";
+    private static final String START_SUPPLY = "startSupply"; // 최상위 startSupply와 이름이 같다
     private static final String GROWTH_SUPPLY = "growthSupply";
     private static final String UPGRADE = "upgrade";
     private static final String TIME_CHANCE = "timeChance";
@@ -44,19 +72,24 @@ public class BattleContentLoader {
     private static final String GOLDEN_MULTIPLIER = "goldenMultiplier";
     private static final String GOLDEN_CRIT_CHANCE = "goldenCritChance";
     private static final String GOLDEN_CRIT_REWARD_SCALE = "goldenCritRewardScale";
+
+    // startSupply[i]
     private static final String COUNT = "count";
 
+    // JSON을 읽는 도구. 소수(0.3 등)를 double이 아닌 BigDecimal로 읽도록 설정한다.
+    // double로 읽은 뒤 float으로 줄이면 드물게 값이 달라지기 때문이다(계약 1.7).
     private static final JsonMapper MAPPER = JsonMapper.builder()
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
             .build();
 
-    // JSON 숫자(BigDecimal 또는 정수) -> float
+    // JSON 숫자(소수는 BigDecimal, 정수는 Integer/Long) -> float
     private static float floatOf(Object value) {
         BigDecimal decimal = value instanceof BigDecimal d ? d : BigDecimal.valueOf(((Number) value).longValue());
         return decimal.floatValue();
     }
 
     // enemies[i].tiers: 객체 목록 -> List<EnemyTier>
+    // gold는 int 범위를 넘을 수 있어서 longValue()로 읽는다
     private static List<EnemyTier> tiersOf(Map<?, ?> enemy) {
         return ((List<?>) enemy.get(TIERS)).stream()
                 .map(v -> {
@@ -68,6 +101,7 @@ public class BattleContentLoader {
                 .toList();
     }
 
+    // enemies[i].traits: 문자열 목록 -> List<String> (예: ["golden", "electric"])
     private static List<String> traitsOf(Map<?, ?> enemy) {
         return ((List<?>) enemy.get(TRAITS)).stream()
                 .map(v -> (String) v)
@@ -78,7 +112,7 @@ public class BattleContentLoader {
     private static GoldenTrait goldenOf(Map<?, ?> enemy) {
         Object value = enemy.get(GOLDEN);
         if (value == null) {
-            return null;
+            return null; // 황금 성질이 없는 종류(planet, star 등)
         }
 
         Map<?, ?> golden = (Map<?, ?>) value;
@@ -89,7 +123,8 @@ public class BattleContentLoader {
         );
     }
 
-    // stats.traitChance: 성질 id -> statId
+    // stats.traitChance: 성질 id -> statId (예: "golden" -> "goldenAsteroid.spawnChance")
+    // 혜성처럼 {} 이면 반복문이 돌지 않아 빈 Map이 된다
     private static Map<String, String> traitChanceOf(Map<?, ?> stats) {
         Map<String, String> result = new LinkedHashMap<>();
         Map<?, ?> chances = (Map<?, ?>) stats.get(TRAIT_CHANCE);
@@ -101,6 +136,7 @@ public class BattleContentLoader {
     }
 
     // enemies[i].stats -> EnemyStatIds
+    // 해당 수치가 없는 종류는 값이 null이다((String) null은 문제없다)
     private static EnemyStatIds statsOf(Map<?, ?> enemy) {
         Map<?, ?> stats = (Map<?, ?>) enemy.get(STATS);
         return new EnemyStatIds(
@@ -117,16 +153,55 @@ public class BattleContentLoader {
         );
     }
 
+    // 다 만든 BattleContent가 규칙에 맞는지 검사한다. 어긴 곳은 into에 모은다(바로 던지지 않는다).
+    private static void validate(BattleContent content, List<ContentDiagnostic> into) {
+        // 규칙을 하나씩 여기에 추가
+        verifyEnemies(content.enemies(), into);
+    }
+
+    // 적 종류에 대한 규칙
+    private static void verifyEnemies(List<EnemyKindDefinition> enemies, List<ContentDiagnostic> into) {
+        Set<String> ids = new HashSet<>();
+
+        // 규칙 1) enemyId가 유일하다 -> 중복 X
+        for (EnemyKindDefinition enemy : enemies) {
+            if (!ids.add(enemy.enemyId())) { // add가 false면 이미 있던 id
+                into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "]",
+                        "적 종류 id '" + enemy.enemyId() + "'가 중복됐다."));
+            }
+        }
+
+        // 규칙 2) upgradesTo가 존재하는 종류를 가리킨다 (없으면 null이라 검사하지 않는다)
+        for (EnemyKindDefinition enemy : enemies) {
+            if (enemy.upgradesTo() != null && !ids.contains(enemy.upgradesTo())) {
+                into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].upgradesTo",
+                        "변환 대상 '" + enemy.upgradesTo() + "'가 없는 종류다."));
+            }
+        }
+    }
+
+    /**
+     * battle.json의 글자를 BattleContent로 만든다.
+     *
+     * @throws ContentLoadException JSON 형식이 틀렸거나, 검증 규칙을 어긴 곳이 하나라도 있을 때
+     *                              (어긴 곳은 모두 모아서 한 번에 알린다)
+     */
     public static BattleContent load(String json) {
-        Object root = MAPPER.readValue(json, Object.class);
+        // JSON 형식 자체가 틀리면(괄호 누락 등) 여기서 알린다
+        Object root;
+        try {
+            root = MAPPER.readValue(json, Object.class); // { } -> Map, [ ] -> List, 숫자/글자/true/null
+        } catch (JacksonException e) {
+            throw new ContentLoadException(WHAT, List.of(new ContentDiagnostic(FILE, "JSON 형식이 올바르지 않다: " + e.getMessage())));
+        }
         Map<?, ?> object = (Map<?, ?>) root;
 
-        // rules
+        // rules: 기본 제한 시간, 처치 시간 보너스
         Map<?, ?> rules = (Map<?, ?>) object.get(RULES);
         BattleRulesDefinition rulesDef = new BattleRulesDefinition(
                 floatOf(rules.get(TIME_LIMIT_SECONDS)), floatOf(rules.get(KILL_TIME_BONUS_SECONDS)));
 
-        // growth.levelExp: 숫자 목록 -> List<Long>
+        // growth.levelExp: 숫자 목록 -> List<Long> (Level별 누적 EXP, int 범위를 넘는다)
         Map<?, ?> growth = (Map<?, ?>) object.get(GROWTH);
         List<Long> levelExp = ((List<?>) growth.get(LEVEL_EXP)).stream()
                 .map(v -> ((Number) v).longValue()).toList();
@@ -144,11 +219,14 @@ public class BattleContentLoader {
                 .toList();
         HqGrowthDefinition growthDef = new HqGrowthDefinition(levelExp, milestones);
 
+        // 최상위 stats: 적 종류에 속하지 않는 수치의 statId (제한 시간, Level업당 시간)
         Map<?, ?> stats = (Map<?, ?>) object.get(STATS);
         GlobalStatIds globalStatIds = new GlobalStatIds(
                 stats.get(TIMER).toString(), stats.get(GROWTH_TIME).toString()
         );
 
+        // enemies: 적 종류마다 EnemyKindDefinition을 만든다 (JSON 순서 그대로)
+        // tiers, traits, golden, stats는 위에서 만든 도우미 메서드가 읽는다
         List<EnemyKindDefinition> enemies = ((List<?>) object.get(ENEMIES)).stream()
                 .map(v -> {
                     Map<?, ?> item = (Map<?, ?>) v;
@@ -164,6 +242,7 @@ public class BattleContentLoader {
                 })
                 .toList();
 
+        // startSupply: 판 시작 때의 공급(노드 반영 전). 종류와 마릿수
         List<SupplyEntry> startSupply = ((List<?>) object.get(START_SUPPLY)).stream()
                 .map(v -> {
                     Map<?, ?> item = (Map<?, ?>) v;
@@ -174,6 +253,15 @@ public class BattleContentLoader {
                 })
                 .toList();
 
-        return new BattleContent(rulesDef, growthDef, globalStatIds, enemies, startSupply);
+        BattleContent content = new BattleContent(rulesDef, growthDef, globalStatIds, enemies, startSupply);
+
+        // 다 만든 뒤 규칙을 검사하고, 문제가 하나라도 있으면 모아서 던진다
+        List<ContentDiagnostic> diagnostics = new ArrayList<>();
+        validate(content, diagnostics);
+        if (!diagnostics.isEmpty()) {
+            throw new ContentLoadException(WHAT, diagnostics);
+        }
+
+        return content;
     }
 }
