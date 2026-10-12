@@ -1,6 +1,6 @@
 # 서버 연동 작업지시
 
-- 상태: **초안** (2026-10-12). 작업 정의와 설계는 [server-sync-plan.md](server-sync-plan.md)(이하 "계획서")에 있고, 이 문서는 **누가 무엇을 어떤 순서로** 하는지만 정한다.
+- 상태: **확정** (2026-10-12). 작업 정의와 설계는 [server-sync-plan.md](server-sync-plan.md)(이하 "계획서"), 구현 형식과 시그니처는 [server-sync-contracts.md](server-sync-contracts.md)(이하 "계약")에 있고, 이 문서는 **누가 무엇을 어떤 순서로** 하는지만 정한다.
 - 인원 3명.
 
 | 담당 | 역할 | 영역 |
@@ -16,14 +16,24 @@
 1. **계약 우선**: A가 먼저 계약(데이터 형식, 스키마, 인터페이스)을 확정해 `dev`에 병합한다(0단계). B와 C는 그 계약만 보고 구현하므로 서로를 기다리지 않는다.
 2. **경계는 인터페이스로**: 다른 담당의 결과물이 필요한 곳은 0단계에서 정한 인터페이스와 가짜 구현(fake)으로 먼저 개발하고, 통합 지점에서 실제 구현으로 바꾼다.
 3. **계약 변경은 A만**: B와 C는 명세에 모호하거나 틀린 곳을 발견하면 A에게 알리고, A가 계약 문서와 코드를 고친다. 각자 임의로 형식을 바꾸지 않는다.
-4. **0단계 중 B와 C는** 계약에 의존하지 않는 작업(B: 전투 규칙 이식, C: 로그인)부터 시작한다.
+4. **0단계 중 B와 C는** 이미 확정된 계약(계약 1장)이나 계약이 필요 없는 작업부터 시작한다(B: W0-3 → W1-4, C: W2-1). 남은 계약은 아래 0단계 현황의 기한 안에 A가 채운다.
+
+### 0단계(A0) 현황
+
+| 계약 장 | 작업지시 ID | 상태 | 막는 작업 | 기한 |
+|---|---|---|---|---|
+| 1장 콘텐츠 | A0-2, A0-3 | **완료** | B의 W0-3·W1-4, A의 W0-1 | - |
+| 2장 클라이언트 인증 경계, 타임아웃 | A0-6 일부, A0-7 일부 | **완료** | C의 W2-1·W2-2·W2-3 | - |
+| 3장 로그·동기화 JSON | A0-1 | 예정 | B의 W1-3·W1-5, A의 W1-2·W3-2 | B 시작 후 5일 |
+| 4장 서버 스키마, 처리기 인터페이스 | A0-4, A0-5 | 예정 | B의 W1-3·W1-5, A의 W1-2 | B 시작 후 5일 |
+| 5장 클라이언트 로그·저장 경계, 나머지 수치 | A0-6, A0-7 | 예정 | C의 W3-1(`KillBucket`, 시작 후 5일)·W3-4, A의 W3-2·W3-3 | C 시작 후 5일 |
 
 ## 2. 담당별 작업 요약
 
 | 담당 | 작업 | 합계 |
 |---|---|---|
 | A | A0(계약) 2, W0-1 2.5, W1-2 2.5, W1-6 2.5, W3-2 2.5, W3-3 2.5, W4-2b 1.5 | **16일** |
-| B | W1-4 4.5, W0-3 2.5, W1-3 2.5, W1-5 1, W1-7 1, W1-8 2.5, W4-1b 1, W5-2 1 | **16일** |
+| B | W0-3 2.5, W1-4 4.5, W1-3 2.5, W1-5 1, W1-7 1, W1-8 2.5, W4-1b 1, W5-2 1 | **16일** |
 | C | W2-1 2.5, W2-2 2.5, W2-3 1, W3-1 2.5, W0-2 1, W3-4 2.5, W3-5 1, W4-1a 1.5, W4-2a 1, W5-1 1 | **16.5일** |
 
 - B는 서버만, C는 클라이언트만 다룬다. 양쪽에 걸친 작업(W4-1, W4-2)은 서버 쪽과 클라이언트 쪽으로 나눴다(a = 클라이언트, b = 서버).
@@ -34,7 +44,7 @@
 ```
         0단계(계약)    1단계(병렬 구현)                     2단계(통합)          3단계(검증)
 A  ▕ A0 ▏ W0-1 ▏ W1-2 ▏ W3-2 ▏ W3-3 ▏ W1-6 ▏───────────────── W4-2b ▏
-B  ▕ W1-4 (전투 규칙 이식) ▏ W0-3 ▏ W1-3 ▏ W1-5 ▏ W1-7 ▏ W4-1b ▏ W1-8 ▏ W5-2 ▏
+B  ▕ W0-3 ▏ W1-4 (전투 규칙 이식) ▏ W1-3 ▏ W1-5 ▏ W1-7 ▏ W4-1b ▏ W1-8 ▏ W5-2 ▏
 C  ▕ W2-1 ▏ W2-2 ▏ W2-3 ▏ W3-1 ▏ W0-2 ▏ W3-4 ▏ W3-5 ▏ W4-1a ▏ W4-2a ▏ W5-1 ▏
 ```
 
@@ -62,8 +72,8 @@ C  ▕ W2-1 ▏ W2-2 ▏ W2-3 ▏ W3-1 ▏ W0-2 ▏ W3-4 ▏ W3-5 ▏ W4-1a ▏ 
 | # | 계약 | 내용 | 주 사용자 |
 |---|---|---|---|
 | A0-1 | 로그·동기화 JSON | 계획서 5장을 필드 단위로 확정한다: 필드 이름·타입·필수 여부, `enemyId` 문자열 목록, `tier`(0부터)·`size`(1부터) 규칙, 요청당 최대 로그 수, **거부 코드 전체 목록**. 타입마다 JSON 샘플 파일을 만들어 양쪽 저장소에 같은 파일로 둔다(= W4-3). | B, C |
-| A0-2 | 콘텐츠 묶음 형식 | 계획서 4.2 범위의 파일 구성(파일 이름, 열·필드), 버전 해시 계산법(정규화 방법, 알고리즘, 길이). 손으로 만든 **샘플 묶음** 1개. | B(W0-3), A(W0-1), C(W0-2) |
-| A0-3 | 서버 콘텐츠 객체와 규칙 인터페이스 | 서버의 불변 객체(Java record): 적 종류, 색 등급, 황금 성질, HQ 성장, 전투 규칙. 이식 규칙의 인터페이스 시그니처(예: `BattleRules.startSupply(progress)`, `killValue(enemyId, tier, size, golden, upgrades)`, `timeLimit(upgrades)`, `startLevel(stage)`, `expToReach(level)`). 본문은 `UnsupportedOperationException`. | B(W1-4, W0-3), A(W1-6) |
+| A0-2 | 콘텐츠 묶음 형식 | **완료**(계약 1.2~1.4). 파일 구성, 버전 계산법, 샘플 묶음(`src/test/resources/content-sample/`). | B(W0-3), A(W0-1), C(W0-2) |
+| A0-3 | 서버 콘텐츠 객체와 규칙 인터페이스 | **완료**(계약 1.5~1.7). `battle/content/` record, `battle/rules/` 인터페이스(`BattleRules`, `UpgradeValues`, `RunSetup`, `KindSetup`), 수치 일치 규칙. | B(W1-4, W0-3), A(W1-6) |
 | A0-4 | DB 스키마 | V3 마이그레이션(계획서 8장)과 엔티티·리포지토리(= W1-1). | B, A |
 | A0-5 | 서버 적용 엔진 인터페이스 | `LogHandler`(타입별 처리기) 인터페이스, 처리 결과 타입(적용 / 거부(코드) / 의심 표시), 처리기에 넘기는 진행도·판 상태 객체. | B(W1-3, W1-5), A(W1-2, W1-6) |
 | A0-6 | 클라이언트 경계 | 코어의 칸별 처치 집계 타입(`KillBucket` 등) 시그니처, 로그 모델(C#) 시그니처, `ISyncApi`·`IAuthApi` 인터페이스, 저장 포맷 2의 대기 로그 구조 초안, 계정 정보 파일 형식. | C, A |
@@ -116,27 +126,37 @@ C  ▕ W2-1 ▏ W2-2 ▏ W2-3 ▏ W3-1 ▏ W0-2 ▏ W3-4 ▏ W3-5 ▏ W4-1a ▏ 
 
 ### B — 서버 구현
 
-B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 패키지는 `content/battle/`(전투 콘텐츠, 규칙)와 `sync/handler/`(처리기)를 주로 쓴다. `sync/` 루트(엔진, 컨트롤러)는 A의 영역이다.
+B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 패키지는 `battle/content/`(전투 콘텐츠), `battle/rules/`(전투 규칙)와 `sync/handler/`(처리기)를 주로 쓴다. `sync/` 루트(엔진, 컨트롤러)는 A의 영역이다.
 
-#### W1-4. 전투 규칙 이식 (L, 4.5일, 0단계부터 시작)
+#### W0-3. 전투 콘텐츠 로드 (M, 2.5일, 첫 작업)
 
-- **목표**: 계획서 4.3의 규칙을 Java로 옮긴다. 스탯 합산, 판 구성(크기 상한, 황금 배율·치명, 시간 추가 확률, 시작 수 보너스, 변환 수, 성장 공급 %), 칸별 골드·경험치, 시작 적 수, 제한 시간·성장 시간, 시작 레벨·누적 경험치·마일스톤 보상.
-- **참조**: 클라이언트 코드
-  - `Core/Enemies/Composition/EnemyComposition.cs`, `EnemyUpgradeStats.cs`, `SizeRule.cs`
+- **목표**: 계약 1.2~1.5의 묶음(`content/manifest.json`, `content/nodes/*`, `content/battle/battle.json`)을 시작 시 로드한다.
+  - `battle.json`을 계약 1.5 객체(`BattleContent`)로 만들고 1.5의 로더 검증을 한다. 콘텐츠가 잘못되면 서버를 시작하지 않는다(기존 `NodeContentConfig` 방식).
+  - 목차의 버전을 `ContentVersion`으로 다시 계산해 비교하고, 다르면 시작하지 않는다.
+  - 노드 콘텐츠의 위치를 `content/nodes/`로 유지하되, `NodeTree.nodeContentVersion()`을 묶음의 `contentVersion`으로 대체한다.
+  - 목차 자체도 검사한다: `formatVersion`이 1이고, 목록의 파일이 모두 있다.
+  - 문제는 처음 하나에서 멈추지 말고 모두 모아 한 번에 알린다(기존 노드 로더와 같은 방식).
+  - 읽은 결과를 Spring 빈으로 보관한다: `ContentManifest`(버전), `NodeTree`, `BattleContent`. 이후 코드(전투 규칙, 처리기)는 이 빈을 주입받아 쓰고, 요청 처리 중에는 파일을 읽지 않는다.
+  - `src/main/resources/content/`를 샘플 묶음 내용으로 교체하고(노드 276개), 노드 수 검증 테스트(현재 247)를 갱신한다. W0-1의 실제 묶음이 나오면 다시 교체한다.
+- **샘플 묶음이란**: `src/test/resources/content-sample/`은 클라이언트 내보내기 도구(W0-1, 아직 없음)가 만들 파일과 **같은 형식**이고, 값도 2026-10-12 클라이언트의 실제 값이다. 도구가 완성되면 같은 형식의 파일로 교체만 하면 된다.
+- **참조**: 계약 1장, 기존 `node/content/*`, `NodeContentConfig`, `content/ContentVersion`(기준 구현), 샘플 묶음 `src/test/resources/content-sample/`. JSON은 서버에 있는 Jackson 3으로 읽는다.
+- **완료 조건**: 샘플 묶음 로드 테스트, 잘못된 묶음(버전 불일치, 1.5의 검증 위반마다)이 시작을 막는 테스트. W0-1 이후 실제 묶음으로도 통과.
+- **선행**: 없음(계약 1장 완료).
+
+#### W1-4. 전투 규칙 이식 (L, 4.5일)
+
+- **목표**: 계약 1.6의 `BattleRules`를 구현한다(계획서 4.3). 스탯 합산, 판 구성(크기 상한, 질량과 색 비율, 황금 배율·치명, 시간 추가 확률, 성질 확률, 시작 수 보너스, 변환 수), 칸별 골드·경험치, 시작 적 수, 제한 시간·성장 시간, Level 계산.
+- **무엇을 만드는가**: 미리 계산해 들고 있는 데이터가 아니라, W0-3이 들고 있는 `NodeTree`·`BattleContent`로 **플레이어 진행도에 따른 판 설정을 그때그때 계산하는 서비스**다. 상태를 갖지 않는 빈으로 등록한다. 결산 검증(W1-6)과 판 시작 처리기(W1-5)가 이렇게 쓴다: 노드 랭크 → `upgradesFor` → `setupFor(성장 단계, …)` → `RunSetup`(시작 레벨, 제한 시간, 시작 적 수, 경험치→레벨) → `kind(적)` → `KindSetup`(최대 크기, 나올 수 있는 색, 처치 하나의 골드·경험치).
+- **어떤 statId가 어디에 닿는지는 옮기지 않는다.** `BattleContent`의 `stats`(`GlobalStatIds`, `EnemyStatIds`)에 있다(계약 C3). 그 이름으로 `UpgradeValues`에서 값을 꺼낸다.
+- **참조**: 계약 1.6~1.7(수치 일치 규칙), 클라이언트 코드
+  - `Core/Enemies/Composition/EnemyComposition.cs`(`From`), `MassRule.cs`, `SizeRule.cs`
   - `Core/Enemies/Definitions/EnemyDefinition.cs`(`StatsAt`)
   - `Core/Battle/Session/GameSessionFactory.cs`(`StartSupplyOf`)
   - `Core/Battle/Time/TimeLimitDefinition.cs`, `Core/Hq/*`
   - `Core/Nodes/NodePurchase.cs`(`StatsFor`), `Core/Common/UpgradeStatValues.cs`
-- **주의**: 반올림은 C#의 `MidpointRounding.AwayFromZero`와 같게 한다. `float`·`double` 사용을 C#과 맞춘다.
-- **0단계 동안**: 계약이 나오기 전에는 C# 코드를 읽고 규칙 단위로 Java 순수 함수부터 작성한다. A0-3이 병합되면 그 인터페이스에 맞춘다.
-- **완료 조건**: A0-3 인터페이스 구현, 규칙별 단위 테스트. C# 기대값 표 일치는 W4-1b에서 확인한다.
-
-#### W0-3. 전투 콘텐츠 로드 (M, 2.5일)
-
-- **목표**: A0-2 형식의 묶음을 시작 시 로드해 A0-3 객체로 만든다. 콘텐츠가 잘못되면 서버를 시작하지 않는다(기존 `NodeContentConfig` 방식). 버전 해시를 같은 방식으로 계산한다. 노드 콘텐츠도 새 묶음으로 교체하고, 노드 수 검증 테스트(현재 247)를 갱신한다.
-- **참조**: 기존 `node/content/*`, `NodeContentConfig`.
-- **완료 조건**: A0-2 샘플 묶음과 W0-1의 실제 묶음 모두 로드 테스트 통과, 버전 값이 클라이언트 계산과 같다.
-- **선행**: A0-2, A0-3. 실제 묶음은 W0-1 이후.
+- **주의**: 계약 1.7의 수치 일치 규칙을 지킨다(반올림은 .5에서 0에서 먼 쪽, `float`·`double`과 연산 순서를 C#과 같게). 정확한 등식 검사가 1의 차이로도 실패한다.
+- **완료 조건**: `BattleRules` 구현을 빈으로 등록, 샘플 묶음의 실제 콘텐츠로 규칙별 단위 테스트(예: 노드 없음·성장 단계 0이면 시작 레벨 0, 제한 시간 12초, 시작 적은 소행성 20마리). C# 기대값 표 일치는 W4-1b에서 확인한다.
+- **선행**: W0-3(테스트에 실제 콘텐츠를 쓰기 위해).
 
 #### W1-3. 노드 구매·새 게임 처리기 (M, 2.5일)
 
@@ -174,37 +194,53 @@ B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 
 
 ### C — 클라이언트 구현
 
-C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서 한다. 새 어셈블리 `BlackHole.Net`과 `UI/Flow`, `Battle/GameBootstrap.cs`의 연결 코드를 주로 다룬다.
+C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서 한다. `Assets/Scripts/Net/`(인터페이스와 타입은 A가 만들어 두었다, 계약 2.10)의 구현과, `UI/Flow`, `Battle/GameBootstrap.cs`의 연결 코드를 주로 다룬다.
 
 #### W2-1. 네트워크 계층 (M, 2.5일, 0단계부터 시작)
 
-- **목표**: `BlackHole.Net` 어셈블리. `UnityWebRequest` 기반 JSON 요청, 타임아웃, 서버 오류 형식(`{"error":{"code","message"}}`) 파싱, 테스트용 인터페이스.
-- **참조**: `Analytics/Transport/AnalyticsClient.cs`(재사용할 패턴), 서버 `ErrorResponse`.
-- **완료 조건**: 가짜 전송으로 성공·오류·타임아웃 테스트.
+- **목표**: 계약 2.4의 전송 인터페이스를 구현한다.
+  - `IHttpTransport`의 `UnityWebRequest` 구현(`BlackHole.Net.Unity`). 예외를 던지지 않고 결과를 셋(서버가 답함 / 네트워크 오류 / 타임아웃) 중 하나로 돌려준다. 서버 오류 본문(`{"error":{"code","message"}}`)은 파싱해 `HttpResult.Error`에 넣는다. `BearerToken`이 있으면 `Authorization` 헤더, 본문이 있으면 `Content-Type: application/json`을 붙인다.
+  - `IJsonSerializer`의 `JsonUtility` 구현(`BlackHole.Net.Unity`).
+  - 테스트용 가짜 전송(정해 둔 응답을 돌려주고 받은 요청을 기록한다, `BlackHole.Net.Tests`).
+- **참조**: 계약 2.1~2.4, `Analytics/Transport/AnalyticsClient.cs`(같은 방식의 기존 구현), API 명세 "오류 응답".
+- **완료 조건**: 성공, 서버 오류(코드 파싱 포함), 5xx, 타임아웃, 연결 실패를 확인하는 테스트. 로컬 서버에 실제 요청 하나(예: 등록)가 가는 것을 수동으로 확인.
 
 #### W2-2. 게스트 인증 (M, 2.5일)
 
-- **목표**: 계정 정보(guestId, secret, refresh 토큰) 파일 저장. 계획서 7.1 순서(refresh 갱신 → 아이디/시크릿 로그인 → 등록 후 로그인). **새 refresh 토큰은 쓰기 전에 먼저 저장한다.** 401이면 한 번 갱신 후 재시도한다.
-- **참조**: 계획서 7.1, 서버 `AuthController`, `GuestAuthController`, API 명세.
-- **완료 조건**: 로컬 서버를 상대로 등록 → 로그인 → 갱신 → 앱 재시작 후 갱신이 된다. 저장 전 종료를 흉내 낸 테스트(재사용 탐지 → 아이디/시크릿으로 복구).
-- **선행**: W2-1. 계정 정보 파일 형식은 A0-6.
+- **목표**: 계약 2.5~2.7을 구현한다.
+  - `ICredentialStore`의 파일 구현: 진행 저장과 같은 폴더의 `account.json`, 임시 파일에 쓴 뒤 바꿔치기, 깨진 파일은 백업으로 옮기고 "없음"으로 본다.
+  - `IAuthSession` 구현: 앱 시작 시 한 번, 로그인 시간 예산(8초) 안에서 refresh 갱신 → 아이디/시크릿 로그인 → (계정 정보가 없으면) 등록 후 로그인.
+  - 저장 순서: 등록에 성공하면 **로그인 전에** 아이디·시크릿을 저장하고, 새 refresh 토큰은 **다른 일을 하기 전에** 저장한다.
+  - 서버에 닿지 않으면(네트워크 오류, 타임아웃, 5xx) 이번 실행은 오프라인이고 계정 정보는 건드리지 않는다.
+  - 로그인이 `INVALID_CREDENTIALS`면 **새 계정을 만들지 않고** 오프라인으로 둔다(계약 2.7).
+  - 실행 중 401 처리(`RefreshAfterUnauthorizedAsync`): 갱신 한 번, 안 되면 로그인 한 번. 갱신 요청은 동시에 하나만 나간다.
+  - 개발 빌드 테스트 도구에 "계정·진행 초기화" 버튼.
+- **참조**: 계약 2.4~2.7(흐름과 응답별 처리 표), API 명세 "인증", 서버 `support/FakeClient.java`(같은 흐름의 기준 구현).
+- **완료 조건**: 가짜 전송으로 계약 2.6 표의 경우마다 테스트. 로컬 서버를 상대로 등록 → 로그인 → 앱 재시작 후 갱신이 된다. 저장 전 종료를 흉내 낸 경우(재사용 탐지 → 아이디/시크릿으로 복구).
+- **선행**: W2-1, 계약 2장(계정 정보 파일 형식, 인증 인터페이스).
 
 #### W2-3. 연결 상태와 타이틀 (S, 1일)
 
-- **목표**: 연결 상태(연결 중 / 온라인 / 오프라인), 로그인 전체 타임아웃(A0-7). 타이틀에 상태를 표시하고, 동기화가 끝나거나 타임아웃이 날 때까지 시작 버튼을 막는다. 이번 실행 중에는 재연결하지 않는다(D9).
-- **참조**: `UI/Flow/ScreenFlow.Title.cs`, `Battle/GameBootstrap.cs`.
+- **목표**: 계약 2.3, 2.8을 구현한다.
+  - `ServerSettings` 에셋(`Assets/Data/ServerSettings.asset`)을 만들어 `GameBootstrap`에 연결하고, 앱 시작 시 `IAuthSession.StartAsync()`를 부른다.
+  - 설정이 꺼져 있거나 밸런스 프로필을 적용한 실행은 로그인하지 않고 `Offline(Disabled)`.
+  - 타이틀에 연결 상태를 작은 텍스트로 표시한다(문구는 계약 2.8 표).
+  - 로그인이 끝날 때까지 시작 버튼을 막는다. 시작 동기화(W3-4)가 생기면 동기화까지 기다리도록 확장한다.
+  - 이번 실행 중에는 재연결하지 않는다(계획서 D9).
+- **참조**: 계약 2.3, 2.8, `UI/Flow/ScreenFlow.Title.cs`, `Battle/GameBootstrap.cs`, `Battle/Analytics/AnalyticsSettings.cs`(설정 에셋의 기존 예).
+- **완료 조건**: 서버를 켠 상태와 끈 상태에서 각각 타이틀 표시와 시작 버튼 동작을 확인.
 - **선행**: W2-2.
 
 #### W3-1. 칸별 처치 집계 (M, 2.5일)
 
 - **목표**: 코어 처치 집계를 (종류, 색 등급, 크기, 황금 여부) 칸별로 확장한다. 황금 치명 횟수·보너스 골드, 시간 추가 성공 수를 따로 센다. `BattleRawData`에서 읽을 수 있게 한다.
-- **참조**: `Core/Enemies/EnemyRoster.cs`, `DeathRewards.cs`, `Core/Battle/World/DeathBonuses.cs`, `World.cs`, `Session/BattleRawData.cs`. 시그니처는 A0-6.
+- **참조**: `Core/Enemies/EnemyRoster.cs`, `DeathRewards.cs`, `Core/Battle/World/DeathBonuses.cs`, `World.cs`, `Session/BattleRawData.cs`. 시그니처는 계약 5장.
 - **완료 조건**: `BattleRunner`로 돌린 판에서 Σ(칸 처치 수 × 칸 경험치) + 시작 경험치 == `Hq.Exp`, Σ(칸 처치 수 × 칸 골드) + 치명 보너스 == `EarnedGold`인지 확인하는 테스트.
-- **선행**: A0-6.
+- **선행**: 계약 5장의 `KillBucket` 시그니처.
 
 #### W0-2. 릴리즈 빌드 콘텐츠 버전 (S, 1일)
 
-- **목표**: 릴리즈 빌드에서도 `contentVersion`이 W0-1과 같은 값이 되게 한다(현재 `Playtest/ContentTag.cs`는 릴리즈에서 `""`).
+- **목표**: 릴리즈 빌드에서도 `contentVersion`이 W0-1과 같은 값이 되게 한다(현재 `Playtest/ContentTag.cs`는 릴리즈에서 `""`). 빌드 전처리에서 W0-1과 같은 루틴으로 묶음을 메모리에서 만들어 계산한다(계약 1.3).
 - **선행**: W0-1.
 
 #### W3-4. 동기화 전송기 (M, 2.5일)
@@ -221,7 +257,7 @@ C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서
 
 #### W4-1a. 이식 기대값 표 생성 (클라이언트) (1.5일)
 
-- **목표**: `Tools/Simulation`에 명령을 추가해, 여러 진행도 상태(빈 진행도, 캠페인 중간 단계들, 전부 구매)에 대한 시작 적 수, 제한 시간, 시작 레벨, 칸별 골드·경험치, 마일스톤 보상을 JSON으로 내보낸다. 형식은 B와 맞춘다.
+- **목표**: `Tools/Simulation`에 명령을 추가해, 여러 진행도 상태(빈 진행도, 캠페인 중간 단계들, 전부 구매)에 대한 시작 적 수, 제한 시간, 시작 레벨, 칸별 골드·경험치, 마일스톤 보상을 JSON으로 내보낸다. 형식은 B가 제안하고 A가 확정해 계약 문서에 추가한다.
 - **선행**: W0-1(같은 콘텐츠 사용).
 
 #### W4-2a. 캠페인 로그 생성 (1일)
@@ -244,12 +280,14 @@ C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서
 | `UI/Flow/ScreenFlow.*.cs` | C | A의 로그 생성 4지점(W3-2)은 한 줄 호출만 추가 |
 | `Save/*`, `Core/Nodes/Save/*` | A | - |
 | `Core/Enemies/*`, `Core/Battle/World/*` | C(W3-1) | - |
-| 서버 `sync/`(루트) | A | B는 `sync/handler/`만 |
-| 서버 `content/battle/` | B | A0-3 인터페이스 변경은 A |
+| `Assets/Scripts/Net/`의 인터페이스·타입(계약 2.4) | A | C는 구현 클래스를 추가한다. 인터페이스 변경이 필요하면 A에게 요청 |
+| 서버 `sync/`(루트), `content/`(묶음 목차·버전) | A | B는 `sync/handler/`만. `content/`는 읽기만 |
+| 서버 `battle/content/`, `battle/rules/` | B | A0-3 인터페이스 변경은 A |
 | 서버 `db/migration/` | A | 추가 마이그레이션이 필요하면 A에게 요청 |
 
 ## 6. 공통 규칙
 
 - 브랜치: 작업 ID별로 `feat/<id>-<짧은 이름>`(예: `feat/w1-3-purchase-handler`). `dev`로 PR, 리뷰어 1명 이상(A는 B·C의 PR을, B·C는 서로 또는 A의 PR을 리뷰).
-- 커밋 메시지: 서버 저장소의 `.gitmessage` 형식(`type(scope): 설명`).
+- 커밋 메시지: 양쪽 저장소의 `.gitmessage` 형식(`type(scope): 설명`).
+- 클라이언트 `CONTRIBUTING.md`의 브랜치 기준(`main`)과 이 규칙(`dev`)이 다르면 이 규칙을 따른다.
 - 계약(A0)과 다른 동작이 필요하면 구현으로 우회하지 말고 A에게 알린다.

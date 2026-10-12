@@ -2,10 +2,10 @@
 
 클라이언트(Unity)와 서버(Spring Boot)의 통신 계약이다. 변경은 이 문서를 먼저 고친 뒤 구현에 반영한다.
 
-- 상태: **초안 v0.7** (2026-10-12). 설계와 근거는 [server-sync-plan.md](server-sync-plan.md)(이하 "계획서"), 담당과 순서는 [server-sync-assignment.md](server-sync-assignment.md)에 있다.
+- 상태: **초안 v0.7** (2026-10-12). 설계와 근거는 [server-sync-plan.md](server-sync-plan.md)(이하 "계획서"), 담당과 순서는 [server-sync-assignment.md](server-sync-assignment.md), 콘텐츠 형식과 내부 인터페이스는 [server-sync-contracts.md](server-sync-contracts.md)에 있다.
 - v0.6과의 차이: 동기화를 **계정 단위 순번(`seq`)을 가진 로그** 방식으로 바꿨다. `batchId`·`baseRevision`·`BASE_MISMATCH`·`claimed`를 없앴고, 전투는 **판 시작(`RUN_START`)과 결산(`SETTLEMENT`) 두 로그**로 나눴다. `revision`은 `lastAppliedSeq`로 대체한다.
 - 구현 현황: 인증 전체(게스트 등록·로그인, 토큰 갱신·로그아웃), `GET /me`, 진행 데이터(불러오기·저장·초기화), 공통 오류 응답이 구현되어 있다. 이 중 **저장(`PUT /me/progress`)과 초기화(`POST /me/progress/reset`)는 검증을 우회하는 경로이므로 제거한다(W1-7).** 동기화 API는 구현 전이다.
-- 세부 필드(거부 코드 목록, `enemyId` 문자열, 한도 값, 허용 오차)는 계약 확정 작업(A0)에서 최종 확정하며, 확정되면 이 문서에 반영한다. 이 문서에서 **(A0 확정)** 으로 표시한 값은 잠정값이다.
+- 세부 필드(거부 코드 목록, 한도 값, 허용 오차)는 계약 확정 작업(A0)에서 최종 확정하며, 확정되면 이 문서에 반영한다. 이 문서에서 **(A0 확정)** 으로 표시한 값은 잠정값이다.
 
 ## 설계 원칙
 
@@ -273,7 +273,7 @@ payload가 없다. 검증 없이 Gold, 성장도, 산 노드를 처음 상태로
 | `startGold` | 시작 때의 Gold |
 | `startLevel` | 블랙홀 시작 Level |
 | `timeLimitSeconds` | 노드가 반영된 시작 제한 시간(초) |
-| `startSupply` | 시작 공급(종류와 수, 변환 반영). 처음 나온 종류 순서. |
+| `startSupply` | 시작 공급(종류와 수, 변환 반영). 처음 나온 종류 순서. `enemyId`는 소문자 종류 id(`asteroid`, `planet`, `star`, `comet`, `galaxy`, 계약 1.4). |
 
 - 진행도를 바꾸지 않는다. 판(run)을 열고, 이미 열린 판이 있으면 그 판을 **포기**로 닫는다(보상 없음).
 - 서버는 자기 진행도로 같은 값을 계산해 비교한다. **값이 달라도 거부하지 않고** 판과 계정에 의심 표시만 남긴 뒤 판을 연다.
@@ -323,7 +323,7 @@ payload가 없다. 검증 없이 Gold, 성장도, 산 노드를 처음 상태로
 | # | 검사 |
 |---|---|
 | S1 | 열린 판이 있고 `runId`가 일치한다 |
-| S2 | 각 장부 항목이 이번 판에서 가능한 조합이다(종류, 색 등급 범위, 크기 상한, 황금 성질 보유) |
+| S2 | 각 장부 항목이 이번 판에서 가능한 조합이다(종류, 이번 판 질량에서 나올 수 있는 색 등급, 크기 상한, 황금 성질 보유와 생성 확률) |
 | S3 | `exp` = 시작 Level의 누적 EXP + Σ(처치 수 × 항목 EXP) |
 | S4 | `reachedLevel`, `reachedMilestone`이 EXP와 Level 표에서 도출된다 |
 | S5 | `goldenCritCount` ≤ 황금 처치 수, `goldenCritBonusGold`가 가능한 범위 안이다 |
@@ -416,4 +416,3 @@ payload가 없다. 검증 없이 Gold, 성장도, 산 노드를 처음 상태로
 1. **콘텐츠 버전 불일치.** 로그의 `contentVersion`이 서버와 다를 때(오프라인 중 업데이트 등) 거부할지, 받아들일지. 결산 검증 로직을 확정하면서 정한다(계획서 D3, W5-3).
 2. **한도 값과 허용 오차.** 요청당 로그 수, 본문 크기, S8의 float 허용 오차, `RUN_START` 비교의 허용 오차(A0).
 3. **통계 검사(S10).** 초당 처치 수, 치명 확률, 시간 추가 확률의 이상치를 의심 표시로 남길지(W1-6).
-4. **`enemyId` 문자열 목록.** 클라이언트 적 종류(`EnemyType`: Asteroid, Planet, Star, Comet, Galaxy)의 키 표기(A0).
