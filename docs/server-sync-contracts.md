@@ -1,13 +1,13 @@
 # 서버 연동 계약 (A0)
 
-- 상태: **작성 중** (2026-10-12). 1장(콘텐츠), 2장(클라이언트 인증) 확정. 3장 이후는 단계별로 채운다.
+- 상태: **작성 중** (2026-10-12). 1장(콘텐츠), 2장(클라이언트 인증) 확정, 3장(로그·동기화 JSON) 초안. 4장 이후는 단계별로 채운다.
 - 이 문서는 [server-sync-plan.md](server-sync-plan.md)(계획서)의 설계를 **구현 가능한 형식과 시그니처**로 확정한다. 담당 간 경계는 이 문서가 기준이며, 변경은 A만 한다([작업지시](server-sync-assignment.md) 1장).
 
 | 장 | 내용 | 작업지시 ID | 상태 |
 |---|---|---|---|
 | 1 | 콘텐츠 묶음 형식, 서버 콘텐츠 객체, 전투 규칙 인터페이스 | A0-2, A0-3 | 확정 |
 | 2 | 클라이언트 인증 경계, 타임아웃 | A0-6 일부, A0-7 일부 | 확정 |
-| 3 | 로그·동기화 JSON | A0-1 | 예정 |
+| 3 | 로그·동기화 JSON | A0-1 | 초안 |
 | 4 | 서버 스키마, 처리기 인터페이스 | A0-4, A0-5 | 예정 |
 | 5 | 클라이언트 로그·저장 경계, 나머지 수치 | A0-6, A0-7 | 예정 |
 
@@ -457,6 +457,7 @@ namespace BlackHole.Net
         Unreachable,         // 네트워크 오류, 타임아웃, 5xx, 시간 예산 초과
         CredentialsRejected, // 저장된 guestId·guestSecret이 거부됨(2.7)
         ProtocolError,       // 예상하지 못한 응답(400, 형식 오류 등). 버그
+        ContentOutdated,     // 동기화가 CONTENT_VERSION_MISMATCH로 거부됨(3.6). 클라이언트 업데이트가 필요하다
     }
 
     // 로그인한 세션. 동기화(3장)가 이걸로 요청에 토큰을 붙이고, 401이면 갱신한다.
@@ -559,6 +560,7 @@ namespace BlackHole.Net
 | `Offline(Disabled)` | 표시 없음 |
 | `Offline(Unreachable)` | "오프라인 — 기록은 다음 접속 때 반영됩니다" |
 | `Offline(CredentialsRejected)`, `Offline(ProtocolError)` | "오프라인 — 계정을 확인할 수 없습니다" |
+| `Offline(ContentOutdated)` | "오프라인 — 게임 데이터가 서버와 다릅니다. 업데이트가 필요합니다" |
 
 - **로그인과 시작 동기화가 끝날 때까지 시작 버튼을 막는다.** 시작 동기화가 끝나야 진행도가 확정되기 때문이다. 동기화(3장)가 구현되기 전까지는 로그인이 끝나면(`Online` 또는 `Offline`) 푼다.
 - 시작 버튼을 막는 최대 시간은 `loginBudgetSeconds + syncTimeoutSeconds`(기본 18초)다. 서버에 닿지 않을 때는 대부분 연결 오류가 곧바로 와서 훨씬 짧다.
@@ -591,3 +593,174 @@ W2-1·W2-2가 채울 것:
 | W2-1 | `IHttpTransport`의 `UnityWebRequest` 구현(오류 본문 파싱 포함), `IJsonSerializer`의 `JsonUtility` 구현, 가짜 전송 | `BlackHole.Net.Unity`, 테스트 |
 | W2-2 | `IAuthSession` 구현(2.6 흐름), `ICredentialStore`의 파일 구현(2.5), 개발 빌드 "계정·진행 초기화" | 흐름은 `BlackHole.Net`, 파일은 `BlackHole.Net.Unity` |
 | W2-3 | `ServerSettings` 에셋, `GameBootstrap` 연결, 타이틀 상태 표시와 시작 버튼 대기(2.8) | Assembly-CSharp |
+
+---
+
+## 3. 로그·동기화 JSON
+
+통신 형식의 큰 틀은 [API 명세](api-spec.md#동기화)에 있다. 이 장은 그 형식의 **필드 타입·범위·필수 여부, 오류를 어디서 내는지, 한도, 거부 코드, 샘플**을 확정한다. 확정한 내용은 API 명세에도 반영한다.
+
+### 3.1 원칙
+
+- 형식은 API 명세의 `{ seq, type, occurredAtUtc, buildVersion, contentVersion, payload }`를 유지한다. `payload`는 `type`마다 다른 객체다.
+- **로그는 만들어진 뒤 바뀌지 않는다.** 클라이언트는 로그를 만들 때 JSON 글자로 한 번 직렬화해 보관하고, 보낼 때 그 글자를 그대로 이어 붙인다. 재전송해도 같은 글자가 간다.
+- 클라이언트의 `JsonUtility`는 null과 다형성(타입마다 다른 `payload`)을 쓰지 못한다. 그래서 **봉투(공통 필드)와 `payload`를 따로 직렬화해 글자로 합친다**(구현은 5장). 서버가 받는 JSON은 이 장의 형식 그대로다.
+- **잘못된 로그 하나 때문에 요청 전체를 버리지 않는다.** 로그 하나의 형식 오류는 그 로그의 거부(`MALFORMED_LOG`)로 처리해, 앞의 로그는 반영되고 클라이언트는 그 로그부터 폐기할 수 있게 한다. 요청 전체의 400은 로그를 하나도 구분할 수 없을 때만 쓴다(3.4).
+
+### 3.2 요청
+
+```json
+{ "logs": [ { ...로그 }, ... ] }
+```
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `logs` | 배열 | 필수. 빈 배열 허용. 최대 500개(3.5) |
+
+### 3.3 로그
+
+**공통 필드**
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `seq` | 정수(int64) | 필수, 1 이상. 요청 안에서 **1씩 증가**(3.4) |
+| `type` | 문자열 | 필수. `RUN_START`, `SETTLEMENT`, `NODE_PURCHASE`, `RESET` |
+| `occurredAtUtc` | 문자열 | 필수, 1~40자. ISO-8601 UTC(예: `2026-10-12T10:00:00Z`). 기록용이며 해석하지 않는다 |
+| `buildVersion` | 문자열 | 필수, 0~32자 |
+| `contentVersion` | 문자열 | 필수, 0~64자. **서버 콘텐츠 버전과 같아야 한다.** 다르면 `CONTENT_VERSION_MISMATCH`(3.6) |
+| `payload` | 객체 | 필수. `RESET`은 `{}` |
+
+**`NODE_PURCHASE`**
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `nodeId` | 문자열 | 필수, 1~64자 |
+| `rank` | 정수(int32) | 필수, 1 이상. 구매 후 Rank |
+| `cost` | 정수(int64) | 필수, 0 이상 |
+
+**`RESET`**: 필드 없음. 다른 필드가 있어도 무시한다.
+
+**`RUN_START`**
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `runId` | 문자열 | 필수. 소문자 UUID(36자, `8-4-4-4-12`) |
+| `seed` | 정수(int32) | 필수 |
+| `startGrowthStage` | 정수(int32) | 필수, 0 이상 |
+| `startGold` | 정수(int64) | 필수, 0 이상 |
+| `startLevel` | 정수(int32) | 필수, 0 이상 |
+| `timeLimitSeconds` | 실수(float) | 필수, 0보다 큰 유한한 값 |
+| `startSupply` | 배열 | 필수, 0~20개. 항목 `{ enemyId: 문자열 1~32자, count: int32 1 이상 }`, `enemyId` 중복 없음 |
+
+**`SETTLEMENT`**
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `runId` | 문자열 | 필수. 소문자 UUID |
+| `playedSeconds` | 실수(float) | 필수, 0 이상의 유한한 값 |
+| `kills` | 배열 | 필수, 0~2000개. 항목 `{ enemyId: 문자열 1~32자, tier: int32 0 이상, size: int32 1 이상, golden: 불리언, count: int32 1 이상 }`. (enemyId, tier, size, golden) 중복 없음 |
+| `goldenCritCount` | 정수(int32) | 필수, 0 이상 |
+| `goldenCritBonusGold` | 정수(int64) | 필수, 0 이상 |
+| `earnedGold` | 정수(int64) | 필수, 0 이상 |
+| `exp` | 정수(int64) | 필수, 0 이상 |
+| `reachedLevel` | 정수(int32) | 필수, 0 이상 |
+| `reachedMilestone` | 불리언 | 필수 |
+| `timeBonusCount` | 정수(int32) | 필수, 0 이상 |
+| `settledGold` | 정수(int64) | 필수, 0 이상 |
+| `nextGrowthStage` | 정수(int32) | 필수, 0 이상 |
+
+- `kills`의 2000은 (종류 5 × 색 6 × 크기 20 × 황금 2 = 1200)보다 넉넉한 상한이다.
+- 실수는 JSON 숫자로 보낸다. 서버는 `float`로 읽는다(계약 1.7과 같은 타입).
+- 정의되지 않은 필드는 무시한다(앞으로 필드를 더할 때 옛 서버가 거부하지 않게).
+
+### 3.4 오류를 어디서 내는가
+
+| 상황 | 결과 |
+|---|---|
+| 본문이 JSON이 아님, `logs`가 없거나 배열이 아님 | `400 INVALID_REQUEST` (아무것도 적용하지 않음) |
+| 어떤 로그의 `seq`가 없거나 정수가 아님, 요청 안에서 `seq`가 1씩 증가하지 않음 | `400 INVALID_REQUEST` (아무것도 적용하지 않음) |
+| `logs`가 500개 초과, 본문이 1 MB 초과 | `413 PAYLOAD_TOO_LARGE` |
+| 로그의 `seq`는 읽히지만 나머지 공통 필드나 `payload`가 3.3을 어김(필드 누락, 타입 오류, 범위 밖, 알 수 없는 `type`, 중복 항목) | 그 로그를 `MALFORMED_LOG`로 **거부하고 멈춘다**. 앞의 로그는 반영된다 |
+| 형식은 맞지만 규칙 검사에 걸림 | 그 로그를 3.6의 코드로 거부하고 멈춘다 |
+
+- 로그 하나의 검사 순서: `seq`(이미 반영됨 → 건너뜀, 누락 → `SEQ_GAP`) → 형식(`MALFORMED_LOG`) → 콘텐츠 버전(`CONTENT_VERSION_MISMATCH`) → 타입별 규칙. 이미 반영된 로그는 형식이나 버전이 어긋나도 건너뛴다.
+- 클라이언트가 400을 받으면 클라이언트 버그다. 이번 실행은 오프라인으로 두고 오류 로그를 남긴다(대기 로그는 지우지 않는다).
+
+### 3.5 한도
+
+| 항목 | 값 | 근거 |
+|---|---|---|
+| 요청당 로그 수 | 500개 | 결산 로그 하나가 칸 100개 기준 약 6 KB, 구매 로그는 약 0.2 KB |
+| 요청 본문 | 1 MB | 위 기준으로 500개가 들어간다 |
+
+- 클라이언트는 대기 로그를 **seq 순서대로 최대 500개씩, 본문 1 MB 이하로** 나눠 보낸다. 앞 요청의 응답을 받은 뒤 다음 요청을 보낸다. 앞 요청에 거부가 있으면 뒤 요청은 보내지 않는다.
+
+### 3.6 거부 코드
+
+`rejected.code`의 전체 목록이다. 이 목록 밖의 코드는 쓰지 않는다.
+
+| code | 로그 | 의미 |
+|---|---|---|
+| `SEQ_GAP` | 공통 | `seq`가 `lastAppliedSeq + 1`보다 큼(앞 로그 누락) |
+| `MALFORMED_LOG` | 공통 | 3.3의 형식 위반 |
+| `CONTENT_VERSION_MISMATCH` | 공통 | `contentVersion`이 서버 콘텐츠 버전과 다름 |
+| `UNKNOWN_NODE` | `NODE_PURCHASE` | 서버 노드 콘텐츠에 없거나 배치되지 않은 노드 |
+| `MAX_RANK_REACHED` | `NODE_PURCHASE` | 이미 최대 Rank |
+| `NODE_HIDDEN` | `NODE_PURCHASE` | 아직 드러나지 않은 노드 |
+| `NOT_ENOUGH_GOLD` | `NODE_PURCHASE` | Gold 부족 |
+| `RANK_MISMATCH` | `NODE_PURCHASE` | `rank`가 현재 Rank + 1이 아님 |
+| `COST_MISMATCH` | `NODE_PURCHASE` | `cost`가 서버 비용과 다름 |
+| `DUPLICATE_RUN_ID` | `RUN_START` | 이미 쓰인 `runId` |
+| `RUN_NOT_OPEN` | `SETTLEMENT` | 열린 판이 없거나 `runId`가 다름(S1) |
+| `SETTLEMENT_INVALID_KILLS` | `SETTLEMENT` | 이번 판에서 불가능한 장부 항목(S2) |
+| `SETTLEMENT_EXP_MISMATCH` | `SETTLEMENT` | EXP, Level, 이정표가 장부와 맞지 않음(S3, S4) |
+| `SETTLEMENT_GOLD_MISMATCH` | `SETTLEMENT` | Gold, 치명 보너스가 장부와 맞지 않음(S5, S6) |
+| `SETTLEMENT_TIME_EXCEEDED` | `SETTLEMENT` | 시간 추가 횟수나 경과 시간이 가능한 범위를 넘음(S7, S8) |
+| `SETTLEMENT_RESULT_MISMATCH` | `SETTLEMENT` | 결산 금액이나 결산 후 성장도가 서버 계산과 다름(S9) |
+
+- 검사 순서는 3.4의 순서, 타입별 규칙 안에서는 위 표의 순서이고, 처음 걸린 것 하나만 알린다.
+- 클라이언트는 `CONTENT_VERSION_MISMATCH`를 받으면 다른 거부와 같이 처리(대기 로그 폐기, 서버 진행도 채택)한 뒤, **이번 실행을 오프라인(`ContentOutdated`)으로 바꾼다.** 버전이 다른 채로 계속 보내면 로그마다 거부되어 진행도가 되돌아가기 때문이다.
+- `message`는 사람이 읽는 설명이며 형식을 정하지 않는다.
+- `RUN_START`의 값 불일치는 거부가 아니므로 코드가 없다. 의심 표시의 사유는 4장에서 정한다.
+
+### 3.7 응답
+
+API 명세의 형식 그대로다. `progress`는 `GET /me/progress`와 같은 객체(`lastAppliedSeq`, `gold`, `growthStage`, `nodes`, `updatedAt`)다.
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `appliedThroughSeq` | int64 | 처리 후 `lastAppliedSeq` |
+| `rejected` | 객체 또는 `null` | `{ seq: int64, type: 문자열, code: 문자열, message: 문자열 }`. 형식 오류로 `type`을 알 수 없으면 `type`은 `""` |
+| `contentVersion` | 문자열 | 서버 콘텐츠 묶음의 버전 |
+| `progress` | 객체 | 항상 있다 |
+
+- 클라이언트의 `JsonUtility`는 `null` 객체를 읽으면 빈 객체로 채운다. **`rejected`가 있는지는 `rejected.code`가 빈 문자열이 아닌지로 판단한다.**
+
+### 3.8 샘플
+
+샘플 콘텐츠 묶음(1.9, `contentVersion` = `4d6c398ad1f5e49c`)에서 **실제로 검증을 통과하는** 값으로 만들었다. 두 저장소에 같은 파일을 둔다.
+
+- 서버: `src/test/resources/sync-samples/`
+- 클라이언트: `Assets/Tests/Net/SyncSamples/`
+
+| 파일 | 내용 |
+|---|---|
+| `sync-request.json` | 새 계정에서: 판 시작 → 결산(소행성 20마리, Gold 20) → `timer-01` 구매(비용 2) → 판 시작(제한 시간 14초) → 결산(18마리) → 새 게임. seq 1~6 |
+| `sync-response-applied.json` | 위 요청의 응답. 모두 반영, 새 게임으로 진행도 0 |
+| `sync-request-tampered.json` | 위 요청의 seq 1~3에서 seq 2 결산의 Gold를 99999로 부풀린 것 |
+| `sync-response-rejected.json` | 위 요청의 응답. seq 1까지만 반영, seq 2가 `SETTLEMENT_GOLD_MISMATCH` |
+| `sync-request-empty.json` | 로그 없는 요청(진행도만 받는다) |
+| `log-run-start.json`, `log-settlement.json`, `log-node-purchase.json`, `log-reset.json` | 타입별 로그 하나 |
+
+- 클라이언트 로그 생성기(W3-2)가 만든 JSON은 이 샘플과 **같은 키·같은 타입**이어야 한다(키 순서와 공백은 달라도 된다). W4-3의 계약 테스트가 이것을 확인한다.
+- 서버 처리기 테스트(W1-3, W1-5, W1-6)와 E2E(W1-8)는 이 샘플을 기본 시나리오로 쓴다.
+
+### 3.9 결정 사항 (3장)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| C12 | 로그는 만들 때 한 번 JSON 글자로 직렬화해 보관하고 그대로 보낸다. 봉투와 `payload`는 따로 직렬화해 합친다 | `JsonUtility`의 제약(null, 다형성)을 피하고, 재전송 때 같은 글자를 보장한다 |
+| C13 | 요청 전체 400은 `logs`나 `seq`를 읽을 수 없을 때만. 나머지 형식 오류는 그 로그의 `MALFORMED_LOG` | 잘못된 로그 하나 때문에 이후 모든 동기화가 막히지 않는다 |
+| C14 | 한도: 요청당 500개, 1 MB. 클라이언트가 나눠 보낸다 | 오프라인으로 쌓인 로그도 몇 번의 요청으로 보낸다 |
+| C15 | 정의되지 않은 필드는 무시한다 | 필드를 더할 때 옛 서버가 거부하지 않는다 |
+| C16 | `contentVersion`이 서버와 다르면 `CONTENT_VERSION_MISMATCH`로 거부한다. 클라이언트는 그 실행을 오프라인(`ContentOutdated`)으로 바꾼다 | 계획서 D3. 최근 몇 버전의 규칙을 보관해 하위 호환을 허용하는 것은 후속 과제(W5-3) |

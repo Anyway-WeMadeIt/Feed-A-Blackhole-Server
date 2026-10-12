@@ -1,0 +1,21 @@
+{
+  "seq": 1,
+  "type": "RUN_START",
+  "occurredAtUtc": "2026-10-12T10:00:00Z",
+  "buildVersion": "0.4.0",
+  "contentVersion": "4d6c398ad1f5e49c",
+  "payload": {
+    "runId": "6f1c2b0a-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+    "seed": 123456,
+    "startGrowthStage": 0,
+    "startGold": 0,
+    "startLevel": 0,
+    "timeLimitSeconds": 12,
+    "startSupply": [
+      {
+        "enemyId": "asteroid",
+        "count": 20
+      }
+    ]
+  }
+}

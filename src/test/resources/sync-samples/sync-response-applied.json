@@ -1,0 +1,12 @@
+{
+  "appliedThroughSeq": 6,
+  "rejected": null,
+  "contentVersion": "4d6c398ad1f5e49c",
+  "progress": {
+    "lastAppliedSeq": 6,
+    "gold": 0,
+    "growthStage": 0,
+    "nodes": [],
+    "updatedAt": "2026-10-12T10:01:01.000000Z"
+  }
+}

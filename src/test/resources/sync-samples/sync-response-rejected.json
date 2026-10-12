@@ -1,0 +1,17 @@
+{
+  "appliedThroughSeq": 1,
+  "rejected": {
+    "seq": 2,
+    "type": "SETTLEMENT",
+    "code": "SETTLEMENT_GOLD_MISMATCH",
+    "message": "earnedGold가 처치 장부와 맞지 않는다."
+  },
+  "contentVersion": "4d6c398ad1f5e49c",
+  "progress": {
+    "lastAppliedSeq": 1,
+    "gold": 0,
+    "growthStage": 0,
+    "nodes": [],
+    "updatedAt": "2026-10-12T10:00:01.000000Z"
+  }
+}
