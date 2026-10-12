@@ -8,6 +8,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -75,6 +76,12 @@ public class BattleContentLoader {
 
     // startSupply[i]
     private static final String COUNT = "count";
+
+    // 검증 기준: 색 등급(tiers)의 개수 (계약 1.5)
+    // 공급 종류(소행성, 행성, 항성, 은하)는 등급이 6개
+    private static final int SUPPLY_TIER_COUNT = 6;
+    // 수거형(혜성)은 등급 구분 없이 1개
+    private static final int PICKUP_TIER_COUNT = 1;
 
     // JSON을 읽는 도구. 소수(0.3 등)를 double이 아닌 BigDecimal로 읽도록 설정한다.
     // double로 읽은 뒤 float으로 줄이면 드물게 값이 달라지기 때문이다(계약 1.7).
@@ -157,6 +164,8 @@ public class BattleContentLoader {
     private static void validate(BattleContent content, List<ContentDiagnostic> into) {
         // 규칙을 하나씩 여기에 추가
         verifyEnemies(content.enemies(), into);
+//        verifyGrowth(content.growth(), into);
+//        verifyStartSupply(content, into);
     }
 
     // 적 종류에 대한 규칙
@@ -178,7 +187,67 @@ public class BattleContentLoader {
                         "변환 대상 '" + enemy.upgradesTo() + "'가 없는 종류다."));
             }
         }
+
+        // 규칙 3) 변환 사슬에 순환이 없다
+        // 적의 이름(enemyId)으로 적 객체를 바로 꺼낼 수 있는 표.
+        // upgradesTo에는 객체가 아니라 이름만 들어 있어서, 사슬을 따라가려면 이름으로 적을 찾아야 한다
+        Map<String, EnemyKindDefinition> byId = new HashMap<>();
+        for (EnemyKindDefinition enemy : enemies) {
+            byId.put(enemy.enemyId(), enemy);
+        }
+
+        // 모든 적을 한 번씩 시작점으로 삼아, 변환 사슬을 따라가다 시작점으로 돌아오는지 본다
+        for (EnemyKindDefinition start : enemies) {
+            String next = start.upgradesTo(); // 시작점이 변하는 다음 적의 이름
+            int steps = 0;                    // 따라간 칸 수(무한 반복 방지용 카운터)
+
+            // 계속 따라가는 조건: 사슬이 끝나지 않았고(null 아님), 존재하는 이름이고(규칙 2가 따로 보고),
+            // 적의 개수보다 많이 따라가지 않았을 때(시작점을 지나지 않는 순환에서 멈추기 위한 상한)
+            while (next != null && byId.containsKey(next) && steps <= enemies.size()) {
+                // 따라간 곳이 시작점이면 원을 그린 것이다. 문자열은 == 가 아니라 equals로 비교한다
+                if (start.enemyId().equals(next)) {
+                    into.add(new ContentDiagnostic("enemies[" + start.enemyId() + "].upgradesTo",
+                            "변환 사슬에 순환이 있다."));
+                    break; // 이 시작점은 더 따라갈 필요가 없다
+                }
+                next = byId.get(next).upgradesTo(); // 한 칸 전진: next가 가리키는 적의 다음 변환 대상을 읽는다
+                steps++;
+            }
+        }
+
+        // 규칙 4) 색 등급 개수와 Gold·EXP
+        // (적마다 보는 규칙이라 적 목록을 도는 반복문 안에 있다)
+        for (EnemyKindDefinition enemy : enemies) {
+            // 등급 개수: 수거형(혜성)은 1개, 공급 종류는 6개
+            if (enemy.pickup()) {
+                if (enemy.tiers().size() != PICKUP_TIER_COUNT) {
+                    into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].tiers",
+                            "색 등급은 1개여야 한다 (받은 개수: '" + enemy.tiers().size() + "')"));
+                }
+            } else {
+                if (enemy.tiers().size() != SUPPLY_TIER_COUNT) {
+                    into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].tiers",
+                            "색 등급은 6개여야 한다 (받은 개수: '" + enemy.tiers().size() + "')"));
+                }
+            }
+
+            // Gold·EXP: 개수가 틀려도 멈추지 않고, 이 적의 모든 등급을 돌며 음수인지 본다
+            // (돌 대상은 적 목록이 아니라 이 적의 등급 목록이다)
+            for (int i = 0; i < enemy.tiers().size(); i++) {
+                // 0은 정상이다(혜성의 gold: 0). 음수일 때만 문제다
+                if (enemy.tiers().get(i).gold() < 0) {
+                    into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].tiers[" + i + "].gold",
+                            "0 이상이어야 한다."));
+                }
+                if (enemy.tiers().get(i).exp() < 0) {
+                    into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].tiers[" + i + "].exp",
+                            "0 이상이어야 한다."));
+                }
+            }
+        }
     }
+
+//    private static void verifyGrowth()
 
     /**
      * battle.json의 글자를 BattleContent로 만든다.

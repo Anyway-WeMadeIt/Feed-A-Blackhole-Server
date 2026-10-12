@@ -74,4 +74,51 @@ class BattleContentLoaderTests {
                 // 이것까지 메시지에 있어야, 문제를 하나에서 멈추지 않고 모아서 보고한다는 뜻이다
                 .hasMessageContaining("변환 대상");
     }
+
+    /**
+     * 변환 사슬이 원을 그리는 battle.json을 넣으면 순환을 알리는지 확인한다(규칙 3).
+     */
+    @Test
+    void upgradeChainLoopIsRejected() throws IOException {
+        // 샘플의 변환 사슬은 asteroid → planet → star → galaxy 이다.
+        // planet이 star 대신 asteroid로 변하게 바꾸면 asteroid → planet → asteroid → ... 순환이 된다.
+        // replace는 새 문자열을 돌려주므로 반드시 변수에 담아야 한다
+        String broken = read().replace("\"upgradesTo\": \"star\",", "\"upgradesTo\": \"asteroid\",");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                // NPE 등이 아니라 ContentLoadException으로 알리는지 확인
+                .isInstanceOf(ContentLoadException.class)
+                // 순환을 알리는 메시지가 있는지 확인
+                .hasMessageContaining("순환")
+                // asteroid가 시작점일 때 한 번, planet이 시작점일 때 한 번 걸려서 문제가 2개로 모여서 나온다
+                .hasMessageContaining("문제 2개");
+    }
+
+    /**
+     * 수거형 여부와 색 등급 개수가 맞지 않으면 알리는지 확인한다(규칙 4).
+     */
+    @Test
+    void tierCountMustMatchTheKind() throws IOException {
+        // 혜성(pickup)을 공급 종류로 바꾸면, 등급이 1개뿐이라 6개가 아니다
+        String broken = read().replace("\"pickup\": true,", "\"pickup\": false,");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("enemies[comet].tiers")
+                .hasMessageContaining("색 등급은");
+    }
+
+    /**
+     * 색 등급의 Gold가 음수이면 알리는지 확인한다(규칙 4).
+     */
+    @Test
+    void tierGoldMustNotBeNegative() throws IOException {
+        // 소행성의 두 번째 등급 gold(6)를 -6으로 바꾼다. 이 문자열은 샘플에 한 번만 나온다
+        String broken = read().replace("\"gold\": 6,", "\"gold\": -6,");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("enemies[asteroid].tiers[1].gold")
+                .hasMessageContaining("0 이상");
+    }
 }
