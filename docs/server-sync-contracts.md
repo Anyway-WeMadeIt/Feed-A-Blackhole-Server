@@ -1,0 +1,593 @@
+# 서버 연동 계약 (A0)
+
+- 상태: **작성 중** (2026-10-12). 1장(콘텐츠), 2장(클라이언트 인증) 확정. 3장 이후는 단계별로 채운다.
+- 이 문서는 [server-sync-plan.md](server-sync-plan.md)(계획서)의 설계를 **구현 가능한 형식과 시그니처**로 확정한다. 담당 간 경계는 이 문서가 기준이며, 변경은 A만 한다([작업지시](server-sync-assignment.md) 1장).
+
+| 장 | 내용 | 작업지시 ID | 상태 |
+|---|---|---|---|
+| 1 | 콘텐츠 묶음 형식, 서버 콘텐츠 객체, 전투 규칙 인터페이스 | A0-2, A0-3 | 확정 |
+| 2 | 클라이언트 인증 경계, 타임아웃 | A0-6 일부, A0-7 일부 | 확정 |
+| 3 | 로그·동기화 JSON | A0-1 | 예정 |
+| 4 | 서버 스키마, 처리기 인터페이스 | A0-4, A0-5 | 예정 |
+| 5 | 클라이언트 로그·저장 경계, 나머지 수치 | A0-6, A0-7 | 예정 |
+
+---
+
+## 1. 콘텐츠
+
+### 1.1 원칙
+
+- 콘텐츠의 원본은 **클라이언트 저장소**다. 서버는 클라이언트 에디터 도구(W0-1)가 내보낸 파일을 그대로 커밋해 쓴다. 서버 저장소에서 콘텐츠 파일을 손으로 고치지 않는다.
+- 서버는 **검증에 필요한 값만** 가진다(계획서 4.2). HP, 이동 속도, 반지름, 배치, 블랙홀 공격 수치, 황금 외 사망 효과는 내보내지 않는다.
+- **노드 → 스탯 → 적 구성**으로 이어지는 연결(어떤 statId가 어떤 적의 어떤 값에 닿는가)은 클라이언트 코드(`EnemyUpgradeStats`, `TimeLimitDefinition`, `HqUpgradeStats`)에 있다. 이 연결을 Java로 다시 옮기지 않고 **내보내기 도구가 데이터로 내보낸다**(1.4의 `stats`). 서버가 옮기는 것은 계산식뿐이다(1.6).
+
+### 1.2 묶음 구성
+
+서버 저장소 `src/main/resources/content/` 아래에 둔다.
+
+```
+content/
+├─ manifest.json
+├─ nodes/
+│  ├─ UpgradeStats.csv
+│  ├─ Nodes.csv
+│  ├─ NodeCost.csv
+│  ├─ NodeEffects.csv
+│  └─ layout.json
+└─ battle/
+   └─ battle.json
+```
+
+- `nodes/`는 **현재 서버 형식을 그대로 유지**한다(`NodeContentCsvReader`, `NodeLayoutReader`가 읽는 형식). 클라이언트 시트와 다른 점(열 이름 변경, 분석용 열 삭제)은 `tools/import_node_content.py`가 하던 변환을 내보내기 도구가 대신한다.
+
+| 서버 파일 | 클라이언트 원본 | 변환 |
+|---|---|---|
+| `UpgradeStats.csv` | `Assets/Data/NodeTable/UpgradeStats.csv` | `StatId, ValueType, Unit, DefaultValue, Aggregation, Min, Max, Memo`만 남긴다(`Enabled`와 분석용 열 삭제) |
+| `Nodes.csv` | `Nodes.csv` | `Rank 수` → `RankCount` |
+| `NodeCost.csv` | `NodeCost.csv` | 빈 `Memo` 열 추가 |
+| `NodeEffects.csv` | `NodeEffects.csv` | `단위` → `Unit`, `표시` 삭제, 빈 `Memo` 열 추가 |
+| `layout.json` | `Assets/Data/NodeCatalog.asset`의 `_layout` | `{"Nodes":[{"Id","Start","X","Y","Links"}]}` (현재 서버 파일과 같은 형식) |
+| `battle/battle.json` | `GameContentSetup.asset`이 가리키는 에셋들 | 1.4 |
+
+- 파일 인코딩은 UTF-8(BOM 없음), 줄바꿈은 LF, 마지막 줄 끝에 LF 하나.
+
+### 1.3 `manifest.json`과 콘텐츠 버전
+
+```json
+{
+  "formatVersion": 1,
+  "contentVersion": "3f9a0c1b7d2e4a58",
+  "files": [
+    "nodes/UpgradeStats.csv",
+    "nodes/Nodes.csv",
+    "nodes/NodeCost.csv",
+    "nodes/NodeEffects.csv",
+    "nodes/layout.json",
+    "battle/battle.json"
+  ]
+}
+```
+
+**콘텐츠 버전 계산** (C#과 Java가 똑같이 구현한다):
+
+1. `files` 순서대로 각 파일에 대해 `경로(UTF-8) + 0x00 + 파일 바이트 + 0x00`을 이어 붙인다. 경로는 `content/` 기준 상대 경로, 구분자는 `/`.
+2. 이어 붙인 바이트의 SHA-256을 구한다.
+3. 소문자 16진수의 **앞 16자**가 `contentVersion`이다.
+
+- 파일 바이트를 그대로 해시하므로, 내보내기 도구가 쓴 파일과 서버가 읽는 파일이 같으면 버전도 같다. 파싱 결과를 정규화해 해시하지 않는다(언어 간 정규화 차이를 없애기 위해서다).
+- **서버**는 시작할 때 버전을 다시 계산해 `manifest.json`의 값과 비교한다. 다르면(손으로 고친 경우) 시작하지 않는다.
+- **클라이언트**는 빌드할 때 내보내기 도구와 같은 루틴으로 묶음을 메모리에서 만들어 버전을 계산하고, 빌드에 넣는다(W0-2). 그래서 내보내기를 잊어도 클라이언트 버전은 실제 콘텐츠를 따르고, 서버 버전과 달라지는 것으로 드러난다.
+- 서버의 기존 `nodeContentVersion`(파싱 결과의 정규형 해시)은 이 `contentVersion`으로 대체한다.
+
+### 1.4 `battle.json`
+
+```json
+{
+  "rules": { "timeLimitSeconds": 12, "killTimeBonusSeconds": 0.3 },
+  "growth": {
+    "levelExp": [10, 25, 45],
+    "milestones": [
+      { "level": 10, "targetGold": 690000 },
+      { "level": 20, "targetGold": 5600000 },
+      { "level": 30, "targetGold": 420000000 }
+    ]
+  },
+  "stats": { "timer": "timer", "growthTime": "growth.time" },
+  "enemies": [
+    {
+      "enemyId": "asteroid",
+      "pickup": false,
+      "upgradesTo": "planet",
+      "tiers": [ { "gold": 1, "exp": 1 }, { "gold": 6, "exp": 2 } ],
+      "traits": [ "golden", "electric" ],
+      "golden": { "multiplier": 50, "critChance": 0.1, "critRewardScale": 1 },
+      "stats": {
+        "mass": "asteroid.massScale",
+        "size": "asteroid.size",
+        "startSupply": "asteroid.count",
+        "growthSupply": "growth.asteroids",
+        "upgrade": "asteroid.toPlanet",
+        "timeChance": "asteroid.timeChance",
+        "traitChance": { "golden": "goldenAsteroid.spawnChance", "electric": "electricAsteroid.spawnChance" },
+        "goldenMultiplier": "goldenAsteroid.rewardScale",
+        "goldenCritChance": "goldenAsteroid.critChance",
+        "goldenCritRewardScale": "goldenAsteroid.critRewardScale"
+      }
+    }
+  ],
+  "startSupply": [ { "enemyId": "asteroid", "count": 20 } ]
+}
+```
+
+위 값은 형식을 보여 주기 위한 예시다. 실제 값과 statId는 내보내기 도구가 채운다.
+
+| 필드 | 원본 | 설명 |
+|---|---|---|
+| `rules.timeLimitSeconds` | `BattleRulesData.TimeLimit` | 기본 제한 시간(초) |
+| `rules.killTimeBonusSeconds` | `BattleRulesData.KillTimeBonus` | 시간 추가 1회의 초 |
+| `growth.levelExp` | `HqGrowthData.LevelExp` | `levelExp[i]`는 Level i+1에 닿는 누적 EXP. Level 0은 EXP 0 |
+| `growth.milestones[].level` / `.targetGold` | `HqMilestoneData` | `fieldScale`은 내보내지 않는다 |
+| `stats.timer` / `stats.growthTime` | `UpgradeStat.Timer`, `UpgradeStat.GrowthTime`의 statId | 제한 시간, Level업당 시간에 닿는 수치 |
+| `enemies[]` | `EnemyData` | `EnemyCatalog`의 순서 그대로(이 순서가 처음 나온 종류 순서와 변환 사슬 정렬의 기준이다) |
+| `enemyId` | `EnemyType` | 소문자: `asteroid`, `planet`, `star`, `comet`, `galaxy` |
+| `pickup` | `SpawnPeriod > 0` | 수거형(혜성) 여부 |
+| `upgradesTo` | `EnemyData.UpgradesTo` | 변환 대상 `enemyId`, 없으면 `null` |
+| `tiers[]` | `EnemyTierData.Gold`, `.Exp` | 크기 1의 색 등급별 Gold·EXP. 순서가 tier 번호(0부터) |
+| `traits[]` | `EnemyTraitData.Type` | 소문자 성질 id: `golden`, `electric`, `moon`, `laser`, `supernova`, `comet`, `gravity`. 종류의 성질 순서 그대로 |
+| `golden` | `traits`에 `golden`이 있을 때만. `DeathEffectData`의 `Multiplier`, `CritChance`, `CritRewardScale` | 노드 반영 전 기본값. 없으면 `null` |
+| `enemies[].stats.*` | `EnemyUpgradeStats`의 각 함수가 이 종류에 돌려주는 `UpgradeStat`의 statId | 해당 수치가 없으면 `null`. `traitChance`는 성질 id → statId(없는 성질은 키를 넣지 않는다) |
+| `startSupply[]` | `EnemyContentData.StartSupply` | 콘텐츠 순서 그대로, 같은 종류가 여러 번 나올 수 있다 |
+
+- **숫자 표기**: 정수(`long`, `int`)는 정수로 쓴다. `float` 값은 **float의 가장 짧은 왕복 표기**로 쓴다(.NET의 `float.ToString("R", InvariantCulture)`). 서버는 `Float.parseFloat`로 읽어 같은 float을 얻는다.
+- 키 순서와 공백은 내보내기 도구가 고정한다(버전이 파일 바이트에 의존하므로, 같은 콘텐츠는 항상 같은 바이트여야 한다). 들여쓰기 2칸, 키 순서는 위 예시 순서.
+
+### 1.5 서버 콘텐츠 객체 (Java)
+
+패키지 `org.example.feedablackhole.battle.content`. 로더(W0-3, B)가 `battle.json`을 읽어 아래 불변 객체를 만든다. 검증 실패 시 서버를 시작하지 않는다(`NodeContentConfig`와 같은 방식).
+
+```java
+public record BattleContent(
+        BattleRulesDefinition rules,
+        HqGrowthDefinition growth,
+        GlobalStatIds stats,
+        List<EnemyKindDefinition> enemies,      // battle.json 순서
+        List<SupplyEntry> startSupply) {
+    public EnemyKindDefinition enemy(String enemyId);   // 없으면 예외
+    public Optional<EnemyKindDefinition> findEnemy(String enemyId);
+}
+
+public record BattleRulesDefinition(float timeLimitSeconds, float killTimeBonusSeconds) {}
+
+public record HqGrowthDefinition(List<Long> levelExp, List<HqMilestone> milestones) {
+    public int maxStage();                      // milestones.size()
+    public int startLevelAt(int stage);         // stage 0 → 0, 아니면 milestones[stage-1].level
+    public int goalLevelAt(int stage);          // 다음 이정표 Level, 없으면 0
+    public Optional<HqMilestone> nextMilestoneAt(int stage);
+    public OptionalLong expToReach(int level);  // Level 0 → 0, 사다리 밖 → empty
+}
+
+public record HqMilestone(int level, long targetGold) {
+    public long rewardFor(long currentGold);    // max(0, targetGold - currentGold)
+}
+
+public record GlobalStatIds(String timer, String growthTime) {}
+
+public record EnemyKindDefinition(
+        String enemyId,
+        boolean pickup,
+        String upgradesTo,                      // nullable
+        List<EnemyTier> tiers,
+        List<String> traits,
+        GoldenTrait golden,                     // nullable
+        EnemyStatIds stats) {}
+
+public record EnemyTier(long gold, long exp) {}
+
+public record GoldenTrait(float multiplier, float critChance, float critRewardScale) {}
+
+public record EnemyStatIds(
+        String mass, String size, String startSupply, String growthSupply,
+        String upgrade, String timeChance,
+        Map<String, String> traitChance,        // 성질 id → statId
+        String goldenMultiplier, String goldenCritChance, String goldenCritRewardScale) {}  // 각각 nullable
+
+public record SupplyEntry(String enemyId, int count) {}
+```
+
+**로더 검증** (클라이언트 로더와 같은 규칙만):
+
+- `enemyId` 유일, `upgradesTo`가 존재하는 종류를 가리키고 변환 사슬에 순환이 없음.
+- 공급 종류(`pickup == false`)는 tier 6개, 수거형은 1개. Gold·EXP는 0 이상.
+- `golden`은 `traits`에 `golden`이 있을 때만 있고, 있으면 반드시 있다.
+- 모든 `stats` statId(`null` 제외)가 `UpgradeStats.csv`에 있다.
+- `levelExp`는 양수이고 증가한다. 이정표 Level은 증가하고 사다리 안이며, `targetGold`도 증가한다.
+- `startSupply`의 종류가 존재하고 수거형이 아니며 `count`가 0 이상이다.
+
+### 1.6 전투 규칙 인터페이스 (Java)
+
+패키지 `org.example.feedablackhole.battle.rules`. B가 구현(W1-4)하고, A의 결산 검증(W1-6)과 B의 판 시작 처리기(W1-5)가 쓴다.
+
+```java
+public interface BattleRules {
+
+    /** 산 노드 Rank(nodeId → rank)로 스탯 값을 계산한다. 클라이언트 NodePurchase.StatsFor. */
+    UpgradeValues upgradesFor(Map<String, Integer> nodeRanks);
+
+    /** 성장도와 스탯 값으로 이번 판의 설정을 계산한다. 클라이언트 GameSessionFactory.Create 중 검증에 필요한 부분. */
+    RunSetup setupFor(int growthStage, UpgradeValues upgrades);
+}
+
+public interface UpgradeValues {
+    float valueOf(String statId);   // clamp(default + sum)
+    float gainOf(String statId);    // valueOf(statId) - default
+}
+
+public interface RunSetup {
+    int growthStage();
+    int startLevel();
+    int goalLevel();                            // 0이면 목표 없음(마지막 이정표 뒤)
+    long startExp();                            // startLevel에 닿는 누적 EXP
+    Optional<HqMilestone> nextMilestone();
+
+    float timeLimitSeconds();                   // 기본 + timer 증가분
+    float growthTimeSeconds();                  // Level업 1회당 더하는 초
+    float killTimeBonusSeconds();
+
+    List<SupplyEntry> startSupply();            // 변환 반영, 처음 나온 종류 순서, 0마리 종류 제외
+
+    KindSetup kind(String enemyId);             // 이번 판의 종류별 구성. 없는 종류면 예외
+    Optional<KindSetup> findKind(String enemyId);
+
+    /** 이번 판의 EXP와 Level 표로 도달 Level을 계산한다. goalLevel을 넘지 않는다. Hq.RaiseLevels. */
+    int levelForExp(long exp);
+}
+
+public interface KindSetup {
+    String enemyId();
+    boolean pickup();
+    int maxSize();                              // 1 ~ 20
+    boolean tierPossible(int tier);             // 이번 판 질량의 색 비율이 0보다 큰가(MassRule)
+    boolean goldenPossible();                   // golden 성질이 있고 생성 확률 > 0
+    float timeChance();                         // 0 ~ 1
+    Optional<GoldenTrait> golden();             // 노드가 반영된 황금 수치
+
+    long goldOf(int tier, int size, boolean golden);    // EnemyDefinition.StatsAt의 Gold
+    long expOf(int tier, int size);                     // EnemyDefinition.StatsAt의 Exp
+    long goldenCritBonusOf(int tier, int size);         // round(goldOf(tier, size, true) × critRewardScale)
+}
+```
+
+- 범위를 벗어난 입력(없는 tier, `maxSize`보다 큰 size, 황금이 불가능한데 `golden = true`)은 `IllegalArgumentException`이다. 결산 검증은 먼저 `tierPossible`·`maxSize`·`goldenPossible`로 S2를 확인한 뒤 값을 묻는다.
+- `tierPossible`을 위해 질량 규칙(`MassRule`, 약 30줄)도 옮긴다. 계획서 S2에 "이번 판 질량에서 나올 수 없는 색" 검사를 더한다.
+
+### 1.7 수치 일치 규칙
+
+서버 계산은 **클라이언트와 같은 타입과 순서**로 한다. 정확한 등식 검사(S3, S6, S9)가 1의 차이로도 실패하기 때문이다.
+
+| 계산 | 클라이언트 | 서버 구현 규칙 |
+|---|---|---|
+| 효과 값 | CSV 문자열 → `float` | `BigDecimal.floatValue()` (IEEE 최근접 반올림, C#과 같은 float) |
+| 스탯 합 | `double` 누적. 배치된 노드만, **배치 순서**(`NodeTree.Nodes` = `layout.json`의 `Nodes` 순서) → Rank 1부터 → 같은 Rank 안에서는 수치 순 → 값 순으로 정렬된 효과 순서 | 같은 순서로 `double` 누적. 서버 `NodeTree.nodes()`(배치 순서)와 `NodeRankDefinition.effects()`(수치 시트 순 → 값 순으로 이미 정렬됨)를 그대로 순회하면 된다. 수치마다 따로 더하므로 순서가 결과에 닿는 것은 같은 수치에 더해지는 값들뿐이다 |
+| `valueOf` | `(float) min(max, max(min, (double) default + sum))` | 같음. 빈 min·max는 무한대 |
+| `gainOf` | `valueOf − default` (float 뺄셈) | 같음 |
+| 정수화(`Whole`) | `Math.Round(float, AwayFromZero)` | .5에서 0에서 먼 쪽으로 반올림 |
+| 확률(`Percent`) | `min(1, gain / 100)` (float) | 같음 |
+| 황금 배율 | `golden.Multiplier + gain / 100` (float) | 같음. 치명 확률은 `min(1, …)` |
+| Gold·EXP | `checked((long) Math.Round(value × (double) multiplier, AwayFromZero))` | `long × (double) float`를 .5에서 0에서 먼 쪽으로 반올림. 크기 배율 `1 + (size − 1) × 1.0f` |
+| 제한 시간 | `Duration + gainOf(timer)` (float) | 같음 |
+| 성장 공급·시작 공급 | `GameSessionFactory.StartSupplyOf` | 같은 순서(콘텐츠 시작 공급 → 보너스 → 변환 사슬 위상 정렬) |
+
+- 일치 여부는 C#이 생성한 기대값 표(W4-1a)로 확인한다. 이 표가 이 장의 실행 가능한 기준이다.
+
+### 1.8 결정 사항 (1장, 확정)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| C1 | 노드 파일은 현재 서버 형식을 유지하고, 전투 데이터만 `battle.json`을 새로 둔다 | 서버 노드 로더를 바꾸지 않아도 된다 |
+| C2 | 콘텐츠 버전은 **파일 바이트**의 해시(SHA-256 앞 16자) | 언어 간 정규화 차이가 없다 |
+| C3 | 스탯 → 적 구성의 연결은 **데이터로 내보낸다**(`stats` 필드) | `EnemyUpgradeStats`의 switch를 Java로 옮기지 않아도 되고, 클라이언트가 바꾸면 자동으로 따라간다 |
+| C4 | 질량 규칙을 옮겨 S2에 "나올 수 없는 색" 검사를 더한다 | 30줄 정도로 검증이 강해진다 |
+| C5 | 서버 전투 계산은 BigDecimal이 아니라 C#과 같은 float·double로 한다 | 정확한 등식 검사를 위해서다. 노드 비용(정수)은 기존 BigDecimal 모델을 그대로 쓴다 |
+
+### 1.9 산출물
+
+| 산출물 | 위치 | 쓰는 작업 |
+|---|---|---|
+| 묶음 목차, 버전 계산(기준 구현) | `content/ContentManifest`, `content/ContentVersion` | W0-3(B), W0-1·W0-2(A·C가 C#으로 같은 계산을 구현) |
+| 전투 콘텐츠 객체(1.5) | `battle/content/*` | W0-3, W1-4(B), W1-6(A) |
+| 전투 규칙 인터페이스(1.6) | `battle/rules/*` (구현 없음) | W1-4(B 구현), W1-5(B), W1-6(A) |
+| 샘플 묶음 | `src/test/resources/content-sample/` | W0-3 로더 테스트(B) |
+| 테스트 | `ContentVersionTests`(샘플 묶음의 목차 버전과 Java 계산이 같은지), `HqGrowthDefinitionTests` | - |
+
+**샘플 묶음** (`contentVersion` = `4d6c398ad1f5e49c`):
+
+- `nodes/`: 2026-10-12 클라이언트 `dev`의 노드 시트와 `NodeCatalog.asset`을 `tools/import_node_content.py --out`으로 변환한 것(배치 노드 276개, 수치 71개). 현재 `src/main/resources/content/nodes/`(노드 247개, 수치 60개)보다 새것이다.
+- `battle/battle.json`: 같은 시점의 클라이언트 에셋(`BattleRules`, `HqGrowthSetup`, `EnemyCatalog`과 적 에셋 5개, `EnemySupplySetup`) 값. `stats`는 `EnemyUpgradeStats`를 손으로 옮겼다.
+- 목차의 버전은 1.3의 계산법을 Python으로 따로 구현해 만들었고, Java 구현(`ContentVersion`)이 같은 값을 내는 것을 `ContentVersionTests`가 확인한다.
+- 실제 묶음은 W0-1(내보내기 도구)이 만든다. 그때 이 샘플과 구조가 같아야 하고(W0-1 완료 조건), 값은 그 시점 콘텐츠를 따른다.
+
+---
+
+## 2. 클라이언트 인증
+
+서버의 게스트 인증 API(등록, 로그인, 갱신)는 이미 구현되어 있다([API 명세](api-spec.md#인증)). 이 장은 **클라이언트가 그 API를 어떻게 쓰는지**를 정한다. 구현은 W2-1(통신 계층), W2-2(게스트 인증), W2-3(연결 상태와 타이틀).
+
+### 2.1 원칙
+
+- 로그인은 앱 시작 시 **백그라운드에서** 사용자 조작 없이 한다. 게임은 로그인 결과를 기다리지 않고 타이틀까지 뜬다.
+- 로그인은 **앱 시작 시 한 번만** 시도한다(계획서 D9). 실패하면 그 실행이 끝날 때까지 오프라인이다.
+- 로그인에 실패해도 게임은 그대로 할 수 있다. 서버 연결 여부는 진행에 영향을 주지 않고, 기록을 언제 보내느냐만 바꾼다.
+- **서버가 거부한 것(4xx)과 서버에 닿지 않은 것(네트워크 오류, 타임아웃, 5xx)을 구분한다.** 닿지 않은 것은 언제나 "이번 실행은 오프라인"이고, 저장된 계정 정보를 건드리지 않는다.
+
+### 2.2 어셈블리 구성
+
+통계 전송(`BlackHole.Analytics` / `BlackHole.Analytics.Transport`)과 같은 방식으로, Unity에 의존하지 않는 부분과 의존하는 부분을 나눈다.
+
+| 어셈블리 | Unity 의존 | 내용 |
+|---|---|---|
+| `BlackHole.Net` | 없음(`noEngineReferences: true`) | 요청·응답 타입, 인터페이스(2.4), 인증 흐름 구현, DTO. **흐름의 단위 테스트는 여기를 대상으로 한다.** |
+| `BlackHole.Net.Unity` | 있음 | `UnityWebRequest` 전송 구현, 계정 정보 파일 저장, 서버 설정 에셋 |
+| `BlackHole.Net.Tests` | Editor 테스트 | 가짜 전송·가짜 저장소로 흐름 테스트 |
+
+- 연결 코드(`GameBootstrap`, 타이틀 화면)는 기존처럼 Assembly-CSharp에 둔다.
+- 비동기는 `async`/`await`를 Unity 메인 스레드에서 쓴다(`AnalyticsClient`와 같은 방식). 스레드 풀로 넘기지 않는다.
+
+### 2.3 서버 설정 에셋
+
+`ServerSettings` (ScriptableObject, `Assets/Data/ServerSettings.asset`, `GameBootstrap`에 연결).
+
+| 필드 | 기본값 | 설명 |
+|---|---|---|
+| `enabled` | `true` | 끄면 항상 오프라인(로그인 시도 없음) |
+| `baseUrl` | `http://localhost:8080` | 경로 없이. 통계 설정(`AnalyticsSettings`)과 같은 서버지만 설정은 따로 둔다 |
+| `requestTimeoutSeconds` | `5` | 인증 요청 하나의 타임아웃 |
+| `loginBudgetSeconds` | `8` | 로그인 전체(갱신 → 로그인 → 등록까지)의 시간 예산 |
+| `syncTimeoutSeconds` | `10` | 동기화 요청 하나의 타임아웃(3장에서 쓴다) |
+
+- 에셋이 없거나 `enabled == false`거나 `baseUrl`이 비어 있으면 오프라인이다.
+- **밸런스 프로필을 적용한 실행(에디터·개발 빌드의 테스트 도구)은 항상 오프라인이다.** 콘텐츠가 서버와 달라 기록이 거부되기 때문이다.
+
+### 2.4 인터페이스 (C#, `BlackHole.Net`)
+
+```csharp
+namespace BlackHole.Net
+{
+    // ---------- 전송 ----------
+
+    public enum HttpOutcome
+    {
+        Response,       // 서버가 답했다(2xx, 4xx, 5xx 모두). StatusCode와 Body를 본다.
+        NetworkError,   // 연결 실패, DNS 실패 등 서버에 닿지 않았다.
+        Timeout,        // 시간 안에 답이 없었다.
+    }
+
+    public sealed class HttpRequest
+    {
+        public string Method { get; }          // "GET", "POST"
+        public string Path { get; }            // "/api/v1/auth/guest/login" (baseUrl 뒤에 붙는다)
+        public string JsonBody { get; }        // 없으면 null
+        public string BearerToken { get; }     // 없으면 null. 있으면 Authorization: Bearer <값>
+        public int TimeoutSeconds { get; }
+        public HttpRequest(string method, string path, string jsonBody, string bearerToken, int timeoutSeconds);
+    }
+
+    public sealed class HttpResult
+    {
+        public HttpOutcome Outcome { get; }
+        public long StatusCode { get; }        // Response일 때만 의미 있다
+        public string Body { get; }            // Response일 때만, 없으면 ""
+        public ApiError Error { get; }         // Response이고 본문이 오류 형식이면, 아니면 null. 전송이 파싱해 넣는다
+        public string TransportMessage { get; }// 닿지 않았을 때의 원인(디버깅용)
+        public bool IsSuccess { get; }         // Response이고 2xx
+        public bool Reached { get; }           // Response이고 5xx가 아님(서버가 처리하고 답했다)
+
+        public static HttpResult Response(long statusCode, string body, ApiError error = null);
+        public static HttpResult NetworkError(string message);
+        public static HttpResult Timeout(string message = null);
+    }
+
+    // 서버 공통 오류 형식 {"error":{"code","message"}}.
+    public sealed class ApiError
+    {
+        public string Code { get; }            // ApiErrorCodes 상수와 비교한다
+        public string Message { get; }         // 디버깅용
+    }
+
+    public static class ApiErrorCodes
+    {
+        public const string InvalidRequest = "INVALID_REQUEST";
+        public const string InvalidCredentials = "INVALID_CREDENTIALS";
+        public const string Unauthorized = "UNAUTHORIZED";
+        public const string InvalidRefreshToken = "INVALID_REFRESH_TOKEN";
+        public const string PayloadTooLarge = "PAYLOAD_TOO_LARGE";
+        public const string InternalError = "INTERNAL_ERROR";
+    }
+
+    public interface IHttpTransport
+    {
+        // 예외를 던지지 않는다. 닿지 않은 경우도 HttpResult로 돌려준다.
+        Task<HttpResult> SendAsync(HttpRequest request);
+    }
+
+    // JSON 변환. 이 어셈블리는 Unity에 의존하지 않으므로 구현(JsonUtility)은 BlackHole.Net.Unity에 둔다.
+    // DTO는 [Serializable] 클래스의 public 필드로 만든다.
+    public interface IJsonSerializer
+    {
+        string ToJson(object value);
+        T FromJson<T>(string json) where T : class;   // 형식이 맞지 않으면 null
+    }
+
+    // API 경로: GuestRegister, GuestLogin, Refresh, Sync
+    public static class ApiPaths { }
+
+    // 인증 DTO: GuestRegisterResponseDto, GuestLoginRequestDto, RefreshTokenRequestDto, TokenResponseDto
+    // (필드 이름 = API 명세의 JSON 키)
+
+    // ---------- 계정 정보 ----------
+
+    public sealed class GuestCredentials
+    {
+        public string GuestId { get; }
+        public string GuestSecret { get; }
+        public string RefreshToken { get; }    // 없으면 null
+        public GuestCredentials WithRefreshToken(string refreshToken);
+    }
+
+    public interface ICredentialStore
+    {
+        // 없거나 읽지 못하면 null.
+        GuestCredentials Load();
+        // 원자적으로 쓴다(2.5). 실패하면 예외.
+        void Save(GuestCredentials credentials);
+    }
+
+    // ---------- 인증 ----------
+
+    public enum ConnectionState
+    {
+        Connecting,     // 앱 시작 직후, 로그인·시작 동기화 중
+        Online,
+        Offline,
+    }
+
+    public enum OfflineReason
+    {
+        None,
+        Disabled,            // 설정이 꺼져 있음, 테스트 프로필
+        Unreachable,         // 네트워크 오류, 타임아웃, 5xx, 시간 예산 초과
+        CredentialsRejected, // 저장된 guestId·guestSecret이 거부됨(2.7)
+        ProtocolError,       // 예상하지 못한 응답(400, 형식 오류 등). 버그
+    }
+
+    // 로그인한 세션. 동기화(3장)가 이걸로 요청에 토큰을 붙이고, 401이면 갱신한다.
+    public interface IAuthSession
+    {
+        ConnectionState State { get; }
+        OfflineReason OfflineReason { get; }
+        event Action<ConnectionState> StateChanged;
+
+        // 앱 시작 시 한 번 부른다. 2.6의 흐름을 loginBudgetSeconds 안에서 진행한다.
+        // 끝나면 State가 Online 또는 Offline이다. 예외를 던지지 않는다.
+        Task StartAsync();
+
+        // Online일 때 현재 액세스 토큰. 아니면 null.
+        string AccessToken { get; }
+
+        // 요청이 401 UNAUTHORIZED를 받았을 때 부른다. 갱신에 성공하면 true(같은 요청을 한 번 다시 보낸다).
+        // 실패하면 false이고 State는 Offline이 된다.
+        Task<bool> RefreshAfterUnauthorizedAsync();
+
+        // 동기화 등이 서버에 닿지 않았을 때 부른다. 이번 실행은 오프라인이 된다(D9).
+        void GoOffline(OfflineReason reason);
+    }
+}
+```
+
+- 구현 클래스 이름과 내부 구조는 W2-2 담당이 정해도 된다. 위 공개 시그니처만 지킨다.
+- 동기화(3장)와 타이틀 화면은 `IAuthSession`만 본다. 토큰과 계정 정보를 직접 다루지 않는다.
+- `State`가 `Online`이 되는 시점은 로그인 성공 직후다. 시작 동기화(3장)가 끝날 때까지 시작 버튼을 막는 것은 타이틀 쪽이 동기화 결과까지 보고 정한다(2.8).
+
+### 2.5 계정 정보 파일
+
+- 위치: **진행 저장과 같은 폴더**의 `account.json`(릴리즈는 `Application.persistentDataPath`).
+  - 테스트 도구가 진행 저장 폴더를 바꾸면 계정도 따라 바뀐다. 진행 저장과 계정이 항상 짝을 이룬다.
+- 형식(`JsonUtility`, UTF-8 BOM 없음):
+
+```json
+{
+  "formatVersion": 1,
+  "guestId": "ccd9b782-14b3-4a62-a004-22951ad0eeb3",
+  "guestSecret": "O4uOMSZI3-pBa3mb8aSS2xRuxzTT02AX3IglV4dxPSk",
+  "refreshToken": "kObw44EmutxdPuBKFcIkN7eKsLc1amB79wSA128ucWU",
+  "savedAtUtc": "2026-10-12T10:00:00Z"
+}
+```
+
+- `refreshToken`은 없으면 빈 문자열이다(`GuestCredentials.RefreshToken`은 null).
+- 쓰기는 `.tmp`에 쓴 뒤 바꿔치기한다(`AnalyticsInstall`, `ProgressSaveFile`과 같은 방식). 직전 파일(`.prev`)은 남기지 않는다(옛 refresh 토큰은 이미 폐기됐다).
+- 읽지 못하는 파일(깨진 JSON, `guestId`·`guestSecret` 누락)은 `account.json.{시각}.bak`으로 옮기고 "계정 정보 없음"으로 본다.
+- 액세스 토큰은 파일에 쓰지 않는다(15분짜리라 다음 실행에는 쓸 수 없다).
+- 평문으로 저장한다. 게스트 계정의 한계로 수용한다.
+
+### 2.6 로그인 흐름
+
+`StartAsync`가 아래 순서로 진행한다. 전체가 `loginBudgetSeconds` 안에 끝나지 않으면 `Offline(Unreachable)`이다.
+
+```
+설정이 꺼져 있음 / 테스트 프로필 ─────────────────────────────────────────▶ Offline(Disabled)
+
+계정 정보 없음 ─▶ 등록 ─▶ (guestId·guestSecret 저장) ─▶ 로그인 ─▶ (refreshToken 저장) ─▶ Online
+계정 정보 있음
+  ├ refreshToken 있음 ─▶ 갱신 ─ 성공 ─▶ (새 refreshToken 저장) ───────────────────────▶ Online
+  │                         └ 401 INVALID_REFRESH_TOKEN ─▶ (refreshToken 지움) ─┐
+  └ refreshToken 없음 ──────────────────────────────────────────────────────────┤
+                                                                                ▼
+                                   로그인 ─ 성공 ─▶ (refreshToken 저장) ─▶ Online
+                                           └ 401 INVALID_CREDENTIALS ─▶ Offline(CredentialsRejected)
+```
+
+| 요청 | 결과 | 처리 |
+|---|---|---|
+| 등록 | 201 | **로그인하기 전에** guestId·guestSecret을 저장한다 |
+| 로그인, 갱신 | 200 | **다른 일을 하기 전에** 새 refreshToken을 저장하고, 액세스 토큰은 메모리에 둔다 |
+| 갱신 | 401 `INVALID_REFRESH_TOKEN` | refreshToken을 지우고(저장) 로그인으로 넘어간다 |
+| 로그인 | 401 `INVALID_CREDENTIALS` | 오프라인(`CredentialsRejected`). **새 계정을 자동으로 만들지 않는다**(2.7) |
+| 모든 요청 | 네트워크 오류, 타임아웃, 5xx | 오프라인(`Unreachable`). 계정 정보는 그대로 둔다 |
+| 모든 요청 | 그 밖의 4xx, 형식이 맞지 않는 2xx 본문 | 오프라인(`ProtocolError`), 오류 로그 |
+
+- 요청 하나의 타임아웃은 `min(requestTimeoutSeconds, 남은 예산)`이다(정수 초, 최소 1).
+- 실행 중 401 처리(`RefreshAfterUnauthorizedAsync`): 갱신을 한 번 시도한다. 성공하면 true. 갱신이 401이면 로그인을 한 번 시도한다. 그래도 안 되면 false이고 `Offline`이 된다. 이 경로에는 시간 예산이 없고 요청마다 `requestTimeoutSeconds`만 적용한다.
+- 갱신 요청은 동시에 하나만 보낸다. 이미 갱신 중이면 그 결과를 함께 기다린다(겹치면 서버 재사용 탐지에 걸린다).
+- 로그아웃 API는 쓰지 않는다.
+
+### 2.7 계정 정보가 거부될 때 새 계정을 만들지 않는 이유
+
+저장된 guestId·guestSecret이 거부되는 것은 정상 운영에서는 일어나지 않는다(서버는 계정을 지우지 않는다). 개발 중 서버 DB를 초기화한 경우가 대부분이다.
+
+이때 새 계정을 자동으로 만들면, 로컬의 다음 seq가 1이 아니라서 첫 동기화가 seq 누락으로 거부되고, 응답의 빈 진행도로 **로컬 진행도가 덮어써진다.** 그래서 자동으로 만들지 않고 오프라인으로 두며, 로컬 진행도는 그대로 남는다.
+
+- 개발 중 복구 방법: 진행 저장 폴더의 계정 정보 파일과 진행 저장을 함께 지운다. W2-2에서 테스트 도구(개발 빌드 전용)에 "계정·진행 초기화" 버튼을 추가한다.
+
+### 2.8 타이틀 화면
+
+- 앱이 시작되면 타이틀을 바로 띄우고, 상태를 작은 텍스트로 표시한다.
+
+| 상태 | 표시 (예) |
+|---|---|
+| `Connecting` | "서버 연결 중…" |
+| `Online` | "온라인" |
+| `Offline(Disabled)` | 표시 없음 |
+| `Offline(Unreachable)` | "오프라인 — 기록은 다음 접속 때 반영됩니다" |
+| `Offline(CredentialsRejected)`, `Offline(ProtocolError)` | "오프라인 — 계정을 확인할 수 없습니다" |
+
+- **로그인과 시작 동기화가 끝날 때까지 시작 버튼을 막는다.** 시작 동기화가 끝나야 진행도가 확정되기 때문이다. 동기화(3장)가 구현되기 전까지는 로그인이 끝나면(`Online` 또는 `Offline`) 푼다.
+- 시작 버튼을 막는 최대 시간은 `loginBudgetSeconds + syncTimeoutSeconds`(기본 18초)다. 서버에 닿지 않을 때는 대부분 연결 오류가 곧바로 와서 훨씬 짧다.
+
+### 2.9 결정 사항 (2장, 확정)
+
+| # | 결정 | 이유 |
+|---|---|---|
+| C6 | Unity 무관 어셈블리(`BlackHole.Net`)와 Unity 어셈블리(`BlackHole.Net.Unity`)로 나눈다 | 인증 흐름을 Editor 테스트에서 가짜 전송으로 검증한다. 통계 전송과 같은 구조 |
+| C7 | 서버 설정은 새 `ServerSettings` 에셋에 둔다 | 통계 설정과 섞지 않는다. 합치는 것은 W5-1에서 검토 |
+| C8 | 계정 정보는 진행 저장과 같은 폴더의 `account.json`에 둔다 | 진행 저장과 계정이 늘 짝을 이룬다. 테스트 프로필의 진행이 실제 계정에 섞이지 않는다 |
+| C9 | 로그인이 `INVALID_CREDENTIALS`면 새 계정을 만들지 않고 오프라인으로 둔다 | 로컬 진행도가 빈 서버 진행도로 덮어써지는 것을 막는다 |
+| C10 | 밸런스 프로필을 적용한 실행은 항상 오프라인 | 콘텐츠가 서버와 달라 기록이 거부된다 |
+| C11 | 타임아웃: 요청 5초, 로그인 전체 8초, 동기화 요청 10초 | 시작 버튼을 막는 시간을 최대 18초로 제한한다 |
+
+### 2.10 산출물
+
+클라이언트 저장소.
+
+| 산출물 | 위치 | 상태 |
+|---|---|---|
+| `BlackHole.Net` 어셈블리: 2.4의 타입·인터페이스 전체, `ApiPaths`, 인증 DTO | `Assets/Scripts/Net/` | 완료(구현 없는 인터페이스 포함) |
+| `BlackHole.Net.Unity` 어셈블리: `ServerSettings` | `Assets/Scripts/Net/Unity/` | 완료. 에셋(`Assets/Data/ServerSettings.asset`)은 W2-3에서 만든다 |
+| `BlackHole.Net.Tests` 어셈블리: `HttpResultTests` | `Assets/Tests/Net/` | 완료(5개 통과) |
+
+W2-1·W2-2가 채울 것:
+
+| 작업 | 구현 | 위치 |
+|---|---|---|
+| W2-1 | `IHttpTransport`의 `UnityWebRequest` 구현(오류 본문 파싱 포함), `IJsonSerializer`의 `JsonUtility` 구현, 가짜 전송 | `BlackHole.Net.Unity`, 테스트 |
+| W2-2 | `IAuthSession` 구현(2.6 흐름), `ICredentialStore`의 파일 구현(2.5), 개발 빌드 "계정·진행 초기화" | 흐름은 `BlackHole.Net`, 파일은 `BlackHole.Net.Unity` |
+| W2-3 | `ServerSettings` 에셋, `GameBootstrap` 연결, 타이틀 상태 표시와 시작 버튼 대기(2.8) | Assembly-CSharp |
