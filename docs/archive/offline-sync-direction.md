@@ -1,5 +1,7 @@
 # 설계 방향 변경: 오프라인 플레이 허용 + 사후 검증
 
+> **사용하지 않는 문서입니다.** 2026-10-12 클라이언트 대규모 변경 이후 계획을 다시 세우면서 폐기했고, 기록용으로만 보관합니다. 이 문서의 설계·계약·작업 정의를 구현 근거로 쓰지 마세요. 현재 기준은 [server-sync-plan.md](../server-sync-plan.md)(계획), [server-sync-assignment.md](../server-sync-assignment.md)(작업지시), [api-spec.md](../api-spec.md)(API 명세)입니다.
+
 - 상태: **방향 합의.** 세부 계약은 [api-spec.md](../api-spec.md), 작업과 분배는 [offline-sync-work-breakdown.md](offline-sync-work-breakdown.md)에 있다.
 - **범위 확정(2026-10-12):** 10일 안에 완성해야 해서 전투 검증을 **L1(처치 장부와 공급 상한)까지**로 한정했고, 단일 기기 로그인과 이벤트 단위 검증(L3) 등은 구현하지 않는다. 이 문서의 해당 부분에는 "(보류)"를 표시했고, 설계는 [offline-sync-design-archive.md](offline-sync-design-archive.md)에 보존했다.
 - 이 문서가 [api-spec.md](../api-spec.md)·[node-content.md](../node-content.md)의 기존 전제와 **충돌하는 곳**은 [영향받는 기존 결정](#영향받는-기존-결정)에 모았다. 그 부분은 이 문서가 정리되기 전까지 "바뀔 예정"으로 읽는다.

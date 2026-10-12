@@ -1,5 +1,7 @@
 # 보류된 설계 기록: L3 검증과 그 밖의 제외 범위
 
+> **사용하지 않는 문서입니다.** 2026-10-12 클라이언트 대규모 변경 이후 계획을 다시 세우면서 폐기했고, 기록용으로만 보관합니다. 이 문서의 설계·계약·작업 정의를 구현 근거로 쓰지 마세요. 현재 기준은 [server-sync-plan.md](../server-sync-plan.md)(계획), [server-sync-assignment.md](../server-sync-assignment.md)(작업지시), [api-spec.md](../api-spec.md)(API 명세)입니다.
+
 - 상태: **기록용.** 이번 프로젝트에서 **구현하지 않기로 한** 범위와 그 설계를 보존한다. 확정된 작업 범위는 [offline-sync-work-breakdown.md](offline-sync-work-breakdown.md), 방향과 배경은 [offline-sync-direction.md](offline-sync-direction.md), 계약은 [api-spec.md](../api-spec.md)에 있다.
 - 쓰임: ① 구현 기간 중 용량이 남을 때 어디서부터 가져올지 정하는 근거, ② 구현하지 못하더라도 **"어디까지 구조를 고민했는지"** 를 보여 주는 기록.
 - 이 문서의 내용은 설계가 끝난 것과 아직 조사가 필요한 것을 구분해 적었다. 코드 위치(`파일:줄`)는 2026-10-12 시점의 클라이언트 코드 기준이다.

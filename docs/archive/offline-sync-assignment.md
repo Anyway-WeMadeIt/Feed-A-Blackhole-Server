@@ -1,5 +1,7 @@
 # 작업 분배안 (4명)
 
+> **사용하지 않는 문서입니다.** 2026-10-12 클라이언트 대규모 변경 이후 계획을 다시 세우면서 폐기했고, 기록용으로만 보관합니다. 이 문서의 설계·계약·작업 정의를 구현 근거로 쓰지 마세요. 현재 기준은 [server-sync-plan.md](../server-sync-plan.md)(계획), [server-sync-assignment.md](../server-sync-assignment.md)(작업지시), [api-spec.md](../api-spec.md)(API 명세)입니다.
+
 - 상태: **분배 구상.** 작업 정의는 [offline-sync-work-breakdown.md](offline-sync-work-breakdown.md), 계약은 [api-spec.md](../api-spec.md)에 있다. 이 문서는 그 작업들을 **누가 어떤 성격으로 맡을지**만 다루며 작업 정의를 바꾸지 않는다.
 - 이름 대신 **역할**로 적었다: **S-A**(서버 설계), **S-B**(서버 구현), **C-A**(클라이언트 설계), **C-B**(클라이언트 구현). 실제 사람은 3장의 기준에 맞춰 넣는다.
 - 규모는 작업 문서의 인일 추정이고, 일정은 10일 안의 목표 순서다.

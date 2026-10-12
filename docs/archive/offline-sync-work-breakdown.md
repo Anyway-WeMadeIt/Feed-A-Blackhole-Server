@@ -1,5 +1,7 @@
 # 작업 방향과 작업 정의
 
+> **사용하지 않는 문서입니다.** 2026-10-12 클라이언트 대규모 변경 이후 계획을 다시 세우면서 폐기했고, 기록용으로만 보관합니다. 이 문서의 설계·계약·작업 정의를 구현 근거로 쓰지 마세요. 현재 기준은 [server-sync-plan.md](../server-sync-plan.md)(계획), [server-sync-assignment.md](../server-sync-assignment.md)(작업지시), [api-spec.md](../api-spec.md)(API 명세)입니다.
+
 - 상태: **작업 정의 최종본** (범위 확정, 2026-10-12). 방향과 배경은 [offline-sync-direction.md](offline-sync-direction.md), 계약은 [api-spec.md](../api-spec.md)에 있다.
 - 제외한 범위와 그 설계는 **[offline-sync-design-archive.md](offline-sync-design-archive.md)** 에 보존했다. 이 문서에는 구현할 것만 적는다.
 - A1, A2, A4'의 세부 계약(파일 형식, 서버 객체, 검증 규칙, 번들 해시)은 **[battle-content-contract.md](battle-content-contract.md)** 에 있다. L1 검증이 서버에 요구하는 정보는 **[l1-verification-requirements.md](l1-verification-requirements.md)** 에 정리했다.

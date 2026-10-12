@@ -1,5 +1,7 @@
 # L1 검증이 서버에 요구하는 정보
 
+> **사용하지 않는 문서입니다.** 2026-10-12 클라이언트 대규모 변경 이후 계획을 다시 세우면서 폐기했고, 기록용으로만 보관합니다. 이 문서의 설계·계약·작업 정의를 구현 근거로 쓰지 마세요. 현재 기준은 [server-sync-plan.md](../server-sync-plan.md)(계획), [server-sync-assignment.md](../server-sync-assignment.md)(작업지시), [api-spec.md](../api-spec.md)(API 명세)입니다.
+
 - 상태: **분석 문서.** 클라이언트가 보내는 `battle`, `purchase` 엔트리 중 서버가 무엇을 검증할 수 있고, 그러려면 서버가 **미리** 무엇을 가지고 있어야 하는지 정리한다. 작업 계획이 필요한 정보를 빠짐없이 만드는지 점검하는 것이 목적이다.
 - 관련 문서: 작업 정의 [offline-sync-work-breakdown.md](offline-sync-work-breakdown.md)(C2, C3, C4a, C4b), 계약 [api-spec.md](../api-spec.md), 콘텐츠 계약 [battle-content-contract.md](battle-content-contract.md).
 - 코드 근거는 클라이언트 `GameSessionFactory`, `EnemyDefinition.StatsAt`, `SizeRule`, `MassRule`, `DeathRewards`, `Hq`, `HqGrowthDefinition`, `HqMilestone`, `TimeLimitDefinition`, `EnemyUpgradeStats`, `HqUpgradeStats`다(2026-10-12 시점).

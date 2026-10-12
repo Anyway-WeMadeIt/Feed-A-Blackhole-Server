@@ -1,5 +1,7 @@
 # 전투 콘텐츠 계약 (A1 ↔ A2)
 
+> **사용하지 않는 문서입니다.** 2026-10-12 클라이언트 대규모 변경 이후 계획을 다시 세우면서 폐기했고, 기록용으로만 보관합니다. 이 문서의 설계·계약·작업 정의를 구현 근거로 쓰지 마세요. 현재 기준은 [server-sync-plan.md](../server-sync-plan.md)(계획), [server-sync-assignment.md](../server-sync-assignment.md)(작업지시), [api-spec.md](../api-spec.md)(API 명세)입니다.
+
 - 상태: **계약 초안.** 클라이언트가 내보내는 `content.json`(A1)과 서버가 만드는 `BattleContent` 객체(A2)의 형태를 정한다. 작업 정의는 [offline-sync-work-breakdown.md](offline-sync-work-breakdown.md)에 있고, 이 문서는 그 작업 중 A1, A2, A4'의 **세부 계약**이다.
 - 근거 코드: 클라이언트 `Assets/Scripts/Core/Battle/Data/`, `Core/Enemies/Data/`, `Core/Hq/Data/`의 데이터 클래스와 로더(2026-10-12 시점).
 - **작업 문서와 달라지는 점**이 있다([10장](#10-작업-문서와-달라지는-점)). 특히 A4'(클라이언트 번들 해시)는 런타임 직렬화가 아니라 **빌드 시점 계산**으로 바뀐다.
