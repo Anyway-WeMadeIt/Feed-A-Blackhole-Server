@@ -1,6 +1,6 @@
 # 보류된 설계 기록: L3 검증과 그 밖의 제외 범위
 
-- 상태: **기록용.** 이번 프로젝트에서 **구현하지 않기로 한** 범위와 그 설계를 보존한다. 확정된 작업 범위는 [offline-sync-work-breakdown.md](offline-sync-work-breakdown.md), 방향과 배경은 [offline-sync-direction.md](offline-sync-direction.md), 계약은 [api-spec.md](api-spec.md)에 있다.
+- 상태: **기록용.** 이번 프로젝트에서 **구현하지 않기로 한** 범위와 그 설계를 보존한다. 확정된 작업 범위는 [offline-sync-work-breakdown.md](offline-sync-work-breakdown.md), 방향과 배경은 [offline-sync-direction.md](offline-sync-direction.md), 계약은 [api-spec.md](../api-spec.md)에 있다.
 - 쓰임: ① 구현 기간 중 용량이 남을 때 어디서부터 가져올지 정하는 근거, ② 구현하지 못하더라도 **"어디까지 구조를 고민했는지"** 를 보여 주는 기록.
 - 이 문서의 내용은 설계가 끝난 것과 아직 조사가 필요한 것을 구분해 적었다. 코드 위치(`파일:줄`)는 2026-10-12 시점의 클라이언트 코드 기준이다.
 
@@ -267,7 +267,7 @@
 
 ### 5.3 A5 에디터 도구 설계: Unity에서 서버 저장소 값을 읽고 올리는 방법
 
-서버가 파일을 정본으로 쓰고 시작 시 한 번만 읽으므로(`node-content.md`: 콘텐츠 변경은 재배포가 필요하다), Unity에서 "올린다"는 **서버 저장소의 파일을 고치는 것**이다. 서버를 호출하는 것이 아니다.
+서버가 파일을 정본으로 쓰고 시작 시 한 번만 읽으므로(`../node-content.md`: 콘텐츠 변경은 재배포가 필요하다), Unity에서 "올린다"는 **서버 저장소의 파일을 고치는 것**이다. 서버를 호출하는 것이 아니다.
 
 ```
 1. 설정   : Editor 사용자 설정(EditorPrefs, 커밋하지 않음)에 서버 저장소의 로컬 체크아웃 경로

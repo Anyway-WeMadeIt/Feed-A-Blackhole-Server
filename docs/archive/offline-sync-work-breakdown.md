@@ -1,7 +1,8 @@
 # 작업 방향과 작업 정의
 
-- 상태: **작업 정의 최종본** (범위 확정, 2026-10-12). 방향과 배경은 [offline-sync-direction.md](offline-sync-direction.md), 계약은 [api-spec.md](api-spec.md)에 있다.
+- 상태: **작업 정의 최종본** (범위 확정, 2026-10-12). 방향과 배경은 [offline-sync-direction.md](offline-sync-direction.md), 계약은 [api-spec.md](../api-spec.md)에 있다.
 - 제외한 범위와 그 설계는 **[offline-sync-design-archive.md](offline-sync-design-archive.md)** 에 보존했다. 이 문서에는 구현할 것만 적는다.
+- A1, A2, A4'의 세부 계약(파일 형식, 서버 객체, 검증 규칙, 번들 해시)은 **[battle-content-contract.md](battle-content-contract.md)** 에 있다. L1 검증이 서버에 요구하는 정보는 **[l1-verification-requirements.md](l1-verification-requirements.md)** 에 정리했다.
 - 제약: 작업 기간 **10일 이내**, 후속 단계가 없으므로 **제외는 곧 구현하지 않는다**는 뜻이다. 인원별 배분과 일정은 이 문서에 두지 않는다(작업과 선행 관계만 정의한다).
 - 규모는 인일 기준 추정이다(S 약 1일, M 2~3일, L 4~5일). 영역: **C**(클라이언트, Unity) / **S**(서버, Spring Boot) / **C+S**.
 
@@ -29,8 +30,8 @@
 
 1. 서버는 모든 계정의 진행도 **정본**을 가지고, 클라이언트는 로컬 진행도와 **행위 로그**를 가진다. 서버는 로그를 순서대로 적용하며 검증하고, 서버가 계산한 상태가 항상 이긴다.
 2. 전투 검증은 **L1까지**다. L1은 "클라이언트가 주장한 값을 정산에 쓰지 않고 서버가 장부로 다시 계산해 대조"하는 방식이다.
-3. **데이터 정본은 Unity 에셋** 이다. 전투 콘텐츠는 Unity에서 편집하고 **JSON으로 내보내 서버 저장소에 둔다.** 노드 CSV는 서버 파일이 현재 정본이므로 클라이언트에 같은 내용을 두고, 이후 수정은 클라이언트에서 편집한 뒤 `tools/import_node_content.py`로 서버에 내보낸다. **같은 정보가 양쪽에 있고 일치하는 것**이 핵심이다.
-4. 콘텐츠 일치는 **번들 해시**로 확인한다. 전투 콘텐츠 JSON의 SHA-256을 서버와 클라이언트가 각자 계산하고, 다르면 `CONTENT_VERSION_MISMATCH`로 거절한다.
+3. **데이터 정본은 Unity 에셋** 이다. 전투 콘텐츠는 Unity에서 편집하고 **JSON으로 내보내 서버 저장소에 둔다.** 노드 CSV는 서버 파일이 현재 정본이므로 클라이언트에 같은 내용을 두고, 이후 수정은 클라이언트에서 편집한 뒤 `../../tools/import_node_content.py`로 서버에 내보낸다. **같은 정보가 양쪽에 있고 일치하는 것**이 핵심이다.
+4. 콘텐츠 일치는 **번들 해시**로 확인한다. 전투 콘텐츠 JSON 파일의 SHA-256(앞 16자리)을 서버는 **파일 바이트로**, 클라이언트는 **에디터가 빌드 시점에 계산해 빌드에 포함**한다(런타임에 직렬화해서 계산하면 float 표기가 플랫폼마다 달라져 해시가 어긋날 수 있다). 다르면 `CONTENT_VERSION_MISMATCH`로 거절한다.
 5. 무효 로그는 **첫 무효 직전까지 적용하고 이후 폐기**한다(`PARTIAL`). 기준이 다르면 아무것도 적용하지 않고 서버 상태를 채택한다(`BASE_MISMATCH`). 거절은 모두 영구이고 재시도 구분은 없다.
 6. 구매, 전투, 새 게임은 모두 `POST /me/sync`의 엔트리다. 온라인이면 한 건씩 즉시, 오프라인이면 쌓아 두었다가 제출한다.
 7. 위치와 관련된 것은 검증하지 않는다.
@@ -44,8 +45,8 @@
 | # | 계약 | 맞추는 작업 | 세부 |
 |---|---|---|---|
 | 1 | **서버 엔트리 핸들러 인터페이스**와 작업 상태 객체 | B2, B3, C3 | B2 |
-| 2 | **콘텐츠 JSON 직렬화 규칙과 파일 위치** | A1, A2, A4' | A1 |
-| 3 | **번들 해시 계산 방식**(같은 직렬화, LF 정규화, SHA-256 앞 16자리) | A1, A2, A4' | A1, A2 |
+| 2 | **콘텐츠 JSON의 스키마, 직렬화 규칙, 파일 위치**(최상위 `{FormatVersion, Content}` 래퍼, enum은 이름) | A1, A2 | [계약 문서](battle-content-contract.md) 2, 4장 |
+| 3 | **번들 해시 알고리즘**(BOM 제거, CRLF를 LF로, SHA-256 앞 16자리)과 **공유 테스트 벡터** | A1, A2, A4' | [계약 문서](battle-content-contract.md) 3장 |
 | 4 | **엔트리 필드**(`kills` 형식 포함) | B4, C1, B2, C3 | api-spec |
 | 5 | **기대값 fixture 형식** | C0, C2, C4a, C4b, C3 | C0 |
 | 6 | **클라이언트 가짜 서버** (명세를 구현한 인메모리 서버) | B5a, B5 | B5a |
@@ -60,23 +61,23 @@
 |---|---|---|---|---|
 | A1 | 전투 콘텐츠 내보내기 | C | 1.5 | |
 | A2 | 서버 전투 콘텐츠 로더와 검증기, 번들 해시 | S | 3 | A1(파일) |
-| A4' | 클라이언트 번들 해시 | C | 0.5 | A1 |
+| A4' | 클라이언트 번들 해시(빌드 시점 계산) | C | 1 | A1 |
 | A7' | 노드 CSV 일치 확인과 편집 절차 | C | 0.5 | |
 
 #### A1. 전투 콘텐츠 내보내기
 
 - **목적:** 서버가 전투 검증에 쓸 콘텐츠를 Unity 에셋에서 JSON으로 만든다.
 - **입력:** `GameContentSetup.ToData()`가 만드는 `ContentData`(`Assets/Scripts/Core/Battle/Data/ContentData.cs`): `BattleRules`, `Breaker`, `Enemies`(적 종류, Tier, 성질과 사망 효과 수치, 시작 공급, 출현 띠, 주기 출현 띠), `Growth`(`LevelExp`, `Milestones`). 표현 데이터(색, 스프라이트)는 DTO에 없다.
-- **출력:** 서버 저장소의 `src/main/resources/content/battle/content.json`.
+- **출력:** 서버 저장소의 `src/main/resources/content/battle/content.json`. 서버가 읽는 필드와 읽지 않는 필드(이동 속도, 반지름, 브레이커, 출현 띠 등)는 [계약 문서](battle-content-contract.md) 4.2절의 표를 따른다(읽지 않는 필드도 **해시에는 들어간다**).
 - **요구사항**
   1. Unity 메뉴 `BlackHole > Export Battle Content`. 서버 저장소의 로컬 체크아웃 경로는 Editor 사용자 설정(EditorPrefs)에 두고, 설정이 없으면 폴더를 고르게 한다.
   2. 내보내기 전에 `ContentLoader.Load`로 검증하고, **오류가 있으면 파일을 쓰지 않고** 진단을 콘솔에 보여 준다.
-  3. 직렬화는 프로젝트에 이미 있는 Newtonsoft를 쓴다. **enum은 이름(문자열)** 으로 내보낸다(`JsonUtility`는 정수로 내보내 서버가 선언 순서에 의존하게 된다). 필드 이름은 DTO 그대로(PascalCase), 선언 순서, 들여쓰기 2칸, **LF 줄바꿈**, 끝에 개행, 숫자는 InvariantCulture, float는 왕복 가능한 최단 표기. `LevelExp`는 숫자 배열이다(현재 에셋은 16진수 덩어리로 저장되어 읽을 수 없다).
-  4. 같은 내용이면 파일을 다시 쓰지 않는다(수정 시각과 diff 노이즈 방지).
-  5. 끝나면 번들 해시와 파일 경로를 콘솔에 출력한다.
-  6. 직렬화 코드는 **한 곳**(`ContentJson`)에 두고 런타임 어셈블리에서도 쓸 수 있게 한다(A4'가 같은 코드를 쓴다). 복사하지 않는다.
+  3. **Newtonsoft를 `Packages/manifest.json`에 명시적으로 추가하고 버전을 고정한다**(`com.unity.nuget.newtonsoft-json` 3.2.2). 현재는 `com.unity.visualscripting`의 전이 의존으로만 설치되어 있어 다른 패키지가 빠지면 사라질 수 있고, 직렬화 결과가 해시에 들어가므로 버전이 바뀌면 안 된다.
+  4. **직렬화(`ContentJson`)는 에디터 어셈블리**(`Assets/Scripts/Editor/`)에 한 곳으로 둔다(런타임은 직렬화하지 않으므로 `Core` 어셈블리를 건드리지 않는다). 내보내기와 A4'의 해시 계산이 같은 코드를 쓰고, 복사하지 않는다. 형식은 계약 문서를 따른다: 최상위 **`{ "FormatVersion": 1, "Content": … }` 래퍼**(`Content`는 `ContentData`와 필드 이름과 중첩이 같다), **enum은 이름(문자열)**(`JsonUtility`는 정수로 내보내 서버가 선언 순서에 의존하게 된다), DTO 선언 순서, 들여쓰기 2칸, **LF**, 끝에 개행, UTF-8 BOM 없음, `InvariantCulture`. 목록 순서(`Enemies.Enemies`, `StartSupply`)는 의미가 있으므로 바꾸지 않는다. `LevelExp`는 숫자 배열이다(현재 에셋은 16진수 덩어리로 저장되어 읽을 수 없다).
+  5. 같은 내용이면 파일을 다시 쓰지 않는다(수정 시각과 diff 노이즈 방지).
+  6. 끝나면 번들 해시와 파일 경로를 콘솔에 출력한다.
   7. 클라이언트 README에 콘텐츠를 바꾼 뒤의 절차(내보내기 → 서버 저장소 커밋 → 서버 배포 → 클라이언트 배포)를 적는다.
-- **완료 조건:** 서버 저장소에 JSON이 있다. JSON을 `ContentData`로 읽어 `ContentLoader`에 통과시킨 결과가 현재 에셋으로 만든 것과 필드 단위로 같다(왕복 테스트). 연속 두 번 내보내기의 결과 바이트가 같다.
+- **완료 조건(왕복 테스트, 에디터 EditMode):** `ContentData → Serialize → Deserialize`가 원본과 필드 단위로 같다(목록 순서 포함). 연속 두 번 직렬화한 결과가 바이트까지 같다. 내보낸 실제 파일이 `ContentLoader`를 통과한다. **공유 테스트 벡터**(계약 문서 3장: `{\n  "FormatVersion": 1\n}\n` → `a4ed84f2186aeaca`, CRLF와 BOM 입력도 같은 값)가 맞는다. 서버 저장소에 JSON이 있다.
 
 #### A2. 서버 전투 콘텐츠 로더와 검증기
 
@@ -84,26 +85,24 @@
 - **입력:** `content.json`. **출력:** 불변 객체 `BattleContent`와 번들 버전 문자열.
 - **요구사항**
   1. **패키지와 구조:** `org.example.feedablackhole.battle.content`에 Spring 비의존 순수 로직(읽기, 검증, 객체)을 두고, 시작 때 불러오는 연결은 `battle.config.BattleContentConfig`에 둔다. 노드 콘텐츠(`node.content`, `NodeContentConfig`)와 같은 구조를 따른다.
-  2. **읽기:** Jackson으로 읽는다. 알 수 없는 필드(위치, 이동 속도, 브레이커 수치 등 서버가 쓰지 않는 것)는 무시한다. enum은 이름으로 매핑한다. 소수는 `BigDecimal`로 읽고 계산한다(노드 콘텐츠와 같은 원칙). Gold, EXP, `LevelExp`, `TargetGold`는 `long`이다.
-  3. **서버가 쓰는 데이터:** `BattleRules`(`TimeLimit`, `KillTimeBonus`), `Enemies[]`(`Type`, `Tiers[]{MaxHealth, Gold, Exp}`, `UpgradesTo`, `SpawnPeriod`, `RainCount`, `Traits[]{Type, Effect, MaxActive}`), 시작 공급(`StartSupply[]{Enemy, Count}`), `Growth`(`LevelExp[]`, `Milestones[]{Level, TargetGold}`). 황금 성질은 `Effect`의 `Multiplier`, `CritChance`, `CritRewardScale`을 쓴다.
-  4. **검증 규칙**(진단은 경로와 함께 **모두** 모아 보고하고, 하나라도 있으면 서버를 시작하지 않는다. 클라이언트 `EnemyContentInvariants`와 각 정의 생성자의 규칙을 따른다):
-     - 적 종류 유일, 공급되는 종류(소행성, 행성, 별)는 Tier가 6개, 값은 `MaxHealth > 0`, `Gold ≥ 0`, `Exp ≥ 0`.
-     - 변환 대상(`UpgradesTo`)은 목록에 있고 픽업이 아니며 변환 사슬이 순환하지 않는다.
-     - 시작 공급의 종류는 목록에 있고 픽업이 아니며 수량은 1 이상이다.
-     - 성질 종류가 한 적 종류 안에서 중복되지 않고, 픽업은 성질이 정확히 하나다.
-     - `LevelExp`는 양수이고 단조 증가한다. `Milestones`의 Level은 오름차순이고 시작 Level을 넘으며 `LevelExp` 범위 안이다.
-     - `TimeLimit > 0`, `KillTimeBonus ≥ 0`. 황금의 `Multiplier > 0`, 확률은 0~1.
-  5. **번들 해시:** 파일 원본 바이트에서 `\r\n`을 `\n`으로 바꾼 뒤 SHA-256을 구해 소문자 16진수 앞 16자리를 쓴다. 시작 로그에 출력하고 `BattleContent`가 제공한다.
-- **완료 조건:** 실제 `content.json`이 로드된다. 의도적으로 틀린 JSON(필드 누락, 중복 종류, Tier 5개, 순환 변환, `LevelExp` 감소 등) 각각이 경로가 담긴 진단으로 보고된다. CRLF와 LF 파일의 해시가 같다. 서버 시작 때와 같은 검증을 CI의 테스트(`RealBattleContentTests`)가 한다.
+  2. **읽기:** Jackson으로 읽는다(`FAIL_ON_UNKNOWN_PROPERTIES = false`, `USE_BIG_DECIMAL_FOR_FLOATS = true`). 알 수 없는 필드는 무시한다. **enum은 이름이 정확히 같을 때만** 매핑하고(`Asteroid`, `Golden` 등, 대소문자 구분), 모르는 이름은 진단이다. 소수는 `BigDecimal`로 읽고 계산한다(노드 콘텐츠와 같은 원칙). Gold, EXP, `LevelExp`, `TargetGold`는 `long`이다. 최상위 `FormatVersion`이 1이 아니면 시작하지 않는다. **파일을 바이트로 읽어 해시를 계산한 뒤 같은 바이트를 파싱한다.**
+  3. **객체 모델**(불변 객체, 목록은 수정 불가. 시그니처와 의미는 [계약 문서](battle-content-contract.md) 6.2절): `BattleContent`(`version()`, `rules()`, `kinds()`, `kind(type)`, `startSupply()`, `growth()`), `EnemyKind`(`type`, `tiers`, `traits`, `upgradesTo`, `spawnPeriod`, `rainCount`, `isPickup()`, `tier(index)`, `golden()`), `Tier(maxHealth, gold, exp)`, `GoldenEffect(multiplier, critChance, critRewardScale)`, `Growth`(`levelExp`, `milestones`, `startLevelAt`, `goalLevelAt`, `nextMilestoneAt`, `expToReach`, **`levelFor(exp, stage)`**: 목표 Level에서 멈추는 Level 계산), `Milestone(level, targetGold)`의 `rewardFor(gold)`. 서버가 읽지 않는 필드(`MoveSpeed`, `Radius`, `RadiusStep`, 황금 외 사망 효과, `Breaker`, 출현 띠, `FieldScale`)는 객체에 담지 않는다. 적 종류와 성질 enum의 JSON 이름은 C# enum 이름 그대로이고, `battle` 엔트리의 `kind`도 같은 이름을 쓴다(`EnemyType.fromJsonName`).
+  4. **검증 규칙**(계약 문서 6.3절의 표). 진단은 **경로와 함께 모두 모아** 보고하고 하나라도 있으면 서버를 시작하지 않는다. **두 단계**로 본다(1단계 개별 값과 모양, 2단계 정의끼리의 규칙. 앞 단계에 오류가 있으면 뒤 단계는 보지 않는다). 주요 규칙: 적 종류 유일, 공급되는 종류는 Tier 6개, `MaxHealth > 0`, `Gold ≥ 0`, `Exp ≥ 0`, 변환 대상이 목록에 있고 픽업이 아니며 사슬이 돌지 않음, 시작 공급은 목록에 있고 픽업이 아니며 수량 1 이상, 성질 종류 중복 없음과 픽업은 성질이 정확히 하나, `LevelExp`는 양수이고 순증가, 이정표의 `Level`은 `LevelExp` 범위 안에서 순증가하고 `TargetGold`도 순증가, `TimeLimit > 0`, `KillTimeBonus ≥ 0`, 황금의 `Multiplier > 0`, `CritChance`는 0~1, `CritRewardScale > 0`. 서버가 읽지 않는 필드의 규칙(`Breaker`, 출현 띠 등)은 보지 않는다(클라이언트가 내보내기 전에 `ContentLoader`로 검증했다).
+  5. **번들 해시:** 파일 바이트에서 **UTF-8 BOM을 제거하고** `\r\n`을 `\n`으로 바꾼 뒤 SHA-256을 구해 소문자 16진수 **앞 16자리**를 쓴다. `BattleContent.version()`이 제공하고 시작 로그에 출력한다.
+  6. **시작 동작:** 시작 때 한 번 읽고 검증해 스프링 빈 하나(`BattleContent`)로 노출한다. 진단이 있으면 **모든 진단을 한 번에 로그로 남기고 서버를 시작하지 않는다.** 성공하면 번들 해시, 종류 수, 시작 공급 합계, 성장 단계 수를 INFO로 남긴다.
+- **완료 조건:** 실제 `content.json`이 로드되고 요약이 맞다(스냅샷 테스트 `RealBattleContentTests`: 콘텐츠를 바꾸면 의도적으로 갱신). 6.3절의 규칙마다 **그 규칙만 어긴 JSON**이 해당 경로의 진단을 낸다(여러 오류는 모두 모아서, 1단계 오류가 있으면 2단계 진단은 나오지 않는다). **공유 테스트 벡터**와 CRLF, BOM 입력의 해시가 맞는다. `Growth`의 질의 메서드(`levelFor`의 목표 Level 정지와 목표 없는 성장도, `rewardFor`가 잔액이 목표보다 많을 때 0, 성장도 범위 밖)와 enum 이름 매핑이 테스트된다.
 
 #### A4'. 클라이언트 번들 해시
 
-- **목적:** 클라이언트가 자신의 콘텐츠 해시를 계산해 `battle` 엔트리에 싣는다. 내보내기를 빠뜨렸는지를 서버가 알아챌 수 있게 하는 안전망이다.
+- **목적:** 클라이언트가 자신의 콘텐츠 해시를 `battle` 엔트리에 싣는다. 에셋을 고치고 내보내기를 빠뜨렸을 때 서버가 알아챌 수 있게 하는 안전망이다. 해시는 **현재 에셋의 상태**를 가리켜야 한다.
+- **런타임에 직렬화하지 않는다.** float를 문자열로 바꾸는 방식이 Mono, IL2CPP, ARM마다 마지막 자리가 달라질 수 있어, 기기에서 계산한 해시가 에디터가 내보낸 파일의 해시와 어긋나면 모든 `battle` 엔트리가 거절된다. 그래서 **에디터가 계산한 값을 빌드에 넣는다.**
 - **요구사항**
-  1. 현재 에셋의 `ContentData`를 **A1과 같은 `ContentJson` 코드**로 직렬화하고, LF 정규화 후 SHA-256 앞 16자리를 구한다.
-  2. 앱 시작 때 한 번 계산해 보관하고(`ContentVersion`), `battle` 엔트리의 `contentVersion`에 쓴다.
-  3. 에셋을 수정하고 내보내지 않았다면 서버의 해시와 달라진다(의도된 동작).
-- **완료 조건:** 내보낸 파일 바이트의 해시와 런타임 해시가 같다(테스트).
+  1. **빌드 시점:** 빌드 전처리기 (`IPreprocessBuildWithReport`)가 현재 에셋의 `ContentData`를 A1의 `ContentJson.Serialize`로 직렬화하고 `ContentJson.Version`을 구해 **텍스트 파일**(`Assets/Resources/BattleContentVersion.txt`)에 쓴다. 생성물이므로 `../../.gitignore`에 넣는다.
+  2. **에디터 플레이 모드:** 플레이 모드에 들어가기 직전에 같은 계산을 해서 값을 넘긴다.
+  3. **런타임 코드는 `ContentVersion.Current`(문자열) 하나만 읽는다.** 값의 출처(빌드 파일 또는 에디터)를 알 필요가 없다. `battle` 엔트리의 `contentVersion`에 쓴다.
+  4. 값을 구할 수 없으면(파일 없음) **전투 엔트리를 만들지 않고** 오류를 로그로 남긴다(빈 해시를 서버에 보내지 않는다).
+  5. 에셋을 수정하고 내보내지 않았다면 서버의 해시와 달라진다(의도된 동작, 시나리오 S6).
+- **완료 조건:** 빌드 전처리기가 만든 값이 `ContentJson.Version(ContentJson.Serialize(현재 에셋))`과 같다(테스트). 내보낸 파일의 해시와 같은 값이다(에셋을 바꾸지 않은 경우). 에디터 플레이 모드와 빌드된 플레이어에서 `ContentVersion.Current`가 같은 값을 돌려준다. 파일이 없을 때 전투 엔트리가 만들어지지 않는다.
 
 #### A7'. 노드 CSV 일치 확인과 편집 절차
 
@@ -111,7 +110,7 @@
 - **요구사항**
   1. 서버 `src/main/resources/content/nodes/{UpgradeStats,Nodes,NodeCost,NodeEffects}.csv`, `layout.json`과 클라이언트 `Assets/Data/NodeTable/*.csv`, 노드 배치를 **각자의 로더로 읽은 결과**(수치 정의, 노드별 Rank의 비용과 효과, 배치와 선)를 비교한다. 서버 CSV는 머리칸을 영문으로 바꾼 것이라 바이트 비교는 하지 않는다.
   2. 차이가 있으면 서버 파일을 기준으로 클라이언트 사본을 맞춘다.
-  3. 수정 절차를 클라이언트 README에 적는다: 클라이언트에서 편집 → `tools/import_node_content.py`로 서버 형식으로 변환 → 서버의 `RealNodeContentTests` 통과 → 두 저장소에 커밋. 이번 기간에는 노드 수치를 수정하지 않는다.
+  3. 수정 절차를 클라이언트 README에 적는다: 클라이언트에서 편집 → `../../tools/import_node_content.py`로 서버 형식으로 변환 → 서버의 `RealNodeContentTests` 통과 → 두 저장소에 커밋. 이번 기간에는 노드 수치를 수정하지 않는다.
 - **완료 조건:** "차이 없음" 비교 결과(날짜, 커밋)와 절차 문서가 있다.
 
 ### B. 동기화
@@ -130,7 +129,7 @@
 
 - **목적:** `POST /me/sync`를 받아 엔트리를 순서대로 적용하며 검증하고 결과를 돌려준다. 엔트리 종류별 검증은 핸들러가 맡고, B2는 흐름만 책임진다.
 - **요구사항**
-  1. **엔드포인트:** `POST /api/v1/me/sync`(인증 필요). 요청과 응답은 [api-spec.md](api-spec.md)의 동기화 절을 따른다. 요청은 `type`으로 구분되는 엔트리 목록을 다형적으로 읽는다(Jackson 타입 정보, 알 수 없는 `type`은 그 엔트리를 `MALFORMED_ENTRY`로 거절).
+  1. **엔드포인트:** `POST /api/v1/me/sync`(인증 필요). 요청과 응답은 [api-spec.md](../api-spec.md)의 동기화 절을 따른다. 요청은 `type`으로 구분되는 엔트리 목록을 다형적으로 읽는다(Jackson 타입 정보, 알 수 없는 `type`은 그 엔트리를 `MALFORMED_ENTRY`로 거절).
   2. **DB(Flyway V3):** 계정별 마지막 동기화 응답을 저장하는 `sync_batch`(계정 ID, `batchId`, 응답 본문, 생성 시각), `player_progress.last_sync_at`(초기값은 계정 생성 시각). `revision`의 의미가 "적용된 엔트리 수"로 바뀌므로 `PlayerProgress`의 주석을 고친다.
   3. **처리 순서**(한 트랜잭션, 계정 행 잠금):
      1. 요청 형식 검사(엔트리 50개 초과나 본문 1 MB 초과는 `413 PAYLOAD_TOO_LARGE`, 필드 누락은 `400`).
@@ -163,7 +162,7 @@
 - **목적:** 구매, 전투 결산, 새 게임을 잃지 않게 로컬에 기록하고, 서버 상태 위에 다시 적용할 수 있게 한다.
 - **현황:** 로컬 진행 저장 `ProgressStore`(`Assets/Scripts/Save/ProgressStore.cs`)가 이미 있다. 본 파일, 직전 저장(`.prev`), 깨진 파일 보관의 패턴을 따른다.
 - **요구사항**
-  1. **엔트리 모델**(순수 C#, Unity 비의존): [api-spec.md](api-spec.md)의 `purchase`, `battle`, `reset`. Newtonsoft로 직렬화하고 `type`으로 구분한다. `TypeNameHandling`은 쓰지 않는다(역직렬화 보안).
+  1. **엔트리 모델**(순수 C#, Unity 비의존): [api-spec.md](../api-spec.md)의 `purchase`, `battle`, `reset`. Newtonsoft로 직렬화하고 `type`으로 구분한다. `TypeNameHandling`은 쓰지 않는다(역직렬화 보안).
   2. **`LogStore`:** 파일 `persistentDataPath/sync/sync-log.json`. 내용: `formatVersion`, `confirmedRevision`, `confirmedState`(마지막으로 서버에서 받은 상태), `pending`(대기 엔트리), `inflight`(전송 중인 묶음의 `batchId`와 엔트리 수), `discarded`(폐기한 엔트리, 사유 코드, 시각; 최근 50개).
   3. **쓰기:** 임시 파일에 쓰고 flush한 뒤 교체한다(직전 파일은 `.prev`로 남긴다). **구매, 결산, 새 게임이 일어날 때마다 즉시 동기로** 쓴다. 앱이 내려갈 때만 저장하면 모바일에서 잃는다(`GameBootstrap.cs:129`는 `OnApplicationPause`에서 진행만 저장한다).
   4. **읽기와 복구:** 본 파일 → 읽지 못하면 깨진 파일을 보관(`.corrupt-<시각>`)하고 `.prev` → 둘 다 안 되면 "로그 없음"으로 시작한다. 이 경우 `confirmedRevision`을 알 수 없으므로 첫 동기화를 엔트리 없이 보내 서버 상태를 받는다(로컬의 미동기화 진행은 잃는다, 드문 경우로 수용).
@@ -181,7 +180,7 @@
   1. **구성:** HTTP를 추상화한 `IHttpTransport`(Unity 구현은 `UnityWebRequest`)와 그 위의 `ApiClient`, `AuthSession`. 테스트에서는 가짜 전송을 끼운다.
   2. **요청:** 기본 URL은 빌드 설정으로 두고, 모든 요청에 `X-Client-Version`(`Application.version`)과 `Authorization: Bearer`를 붙인다. JSON은 Newtonsoft. 타임아웃은 짧게(예: 10초).
   3. **결과 구분:** 성공, 서버 오류(HTTP 상태와 오류 `code`), **네트워크 오류**(연결 불가, 타임아웃)를 구분하는 결과 타입을 쓴다. 네트워크 오류는 예외가 아니다.
-  4. **인증 흐름**([api-spec.md](api-spec.md)의 토큰 흐름): 저장된 자격이 없으면 `register` 후 `login`, 있으면 리프레시 토큰으로 `refresh`(`INVALID_REFRESH_TOKEN`이면 `login`). `401 UNAUTHORIZED`면 `refresh` 후 같은 요청을 한 번 재시도한다. 갱신 응답의 새 리프레시 토큰은 **받는 즉시** 저장하고, 갱신 요청은 한 번에 하나만 보낸다(겹치면 재사용 감지로 토큰이 폐기된다).
+  4. **인증 흐름**([api-spec.md](../api-spec.md)의 토큰 흐름): 저장된 자격이 없으면 `register` 후 `login`, 있으면 리프레시 토큰으로 `refresh`(`INVALID_REFRESH_TOKEN`이면 `login`). `401 UNAUTHORIZED`면 `refresh` 후 같은 요청을 한 번 재시도한다. 갱신 응답의 새 리프레시 토큰은 **받는 즉시** 저장하고, 갱신 요청은 한 번에 하나만 보낸다(겹치면 재사용 감지로 토큰이 폐기된다).
   5. **자격 저장:** `guestId`, `guestSecret`, `refreshToken`은 `PlayerPrefs`가 아니라 앱 전용 파일에 저장한다(플랫폼 보안 저장소는 범위 밖, 한계로 문서화).
   6. **오프라인 시작:** 로그인이나 갱신이 네트워크 오류로 실패해도 게임은 그대로 진행되고, 연결되면 다시 시도한다.
   7. **가짜 서버**(계약 6): 명세를 구현한 인메모리 서버를 EditMode 테스트용으로 만든다. 인증(register, login, refresh 회전, 만료)과 `/me/sync`(`ACCEPTED`, `PARTIAL`, `BASE_MISMATCH`, 멱등)를 흉내 낸다. B5의 테스트가 이 서버를 쓴다.
@@ -193,7 +192,7 @@
 - **요구사항**
   1. **묶음:** `pending`의 앞에서 최대 50개를 새 `batchId`로 묶는다. 전송 직전에 `inflight`(`batchId`, 엔트리 수)를 `LogStore`에 저장해, 앱이 재시작되어도 **같은 `batchId`와 같은 엔트리로** 다시 보낸다. 응답을 받기 전에는 `pending`에서 지우지 않는다. 그동안 쌓인 새 엔트리는 다음 묶음이다.
   2. `baseRevision`은 `confirmedRevision`이고, 이어지는 묶음은 직전 응답의 `revision`이다. `claimed`는 이 묶음 이후 대기 로그가 없을 때만 로컬 진행으로 채운다.
-  3. **응답 처리**([api-spec.md](api-spec.md)의 클라이언트 처리 흐름):
+  3. **응답 처리**([api-spec.md](../api-spec.md)의 클라이언트 처리 흐름):
 
      | 응답 | 처리 |
      |---|---|
@@ -217,7 +216,7 @@
   1. `PUT /me/progress`, `POST /me/progress/reset`과 관련 DTO(`SaveProgressRequest`), 서비스 메서드(`ProgressService.save/reset`)를 **제거한다.** 남아 있으면 클라이언트가 진행도를 직접 덮어쓸 수 있다.
   2. `ErrorCode`에서 `STALE_PROGRESS`, `PROGRESS_REGRESSION`을 제거한다.
   3. 테스트를 새 흐름으로 교체한다: `ProgressApiTests`(조회만 남김), `Stage1ClientFlowTests`와 `FakeClient`를 동기화 흐름(오프라인 쌓기, 부분 거절, 분기)으로 바꾼다.
-  4. [api-spec.md](api-spec.md)의 구현 현황과 [node-content.md](node-content.md)를 고친다("클라이언트는 노드의 비용·효과·해금 규칙을 가지지 않는다"와 클라이언트 사본 동결 문장).
+  4. [api-spec.md](../api-spec.md)의 구현 현황과 [node-content.md](../node-content.md)를 고친다("클라이언트는 노드의 비용·효과·해금 규칙을 가지지 않는다"와 클라이언트 사본 동결 문장).
 - **완료 조건:** 옛 두 경로가 `404` 또는 `405`다(S7). 빌드와 전체 테스트가 통과한다.
 
 ### C. 전투 L1 검증
@@ -245,7 +244,7 @@
 
 #### C1. `battle` 엔트리 구성과 골든 케이스
 
-- **목적:** 한 판의 시작 스냅샷과 결산을 [api-spec.md](api-spec.md)의 `battle` 엔트리로 만들어 결산 시점에 로그에 기록한다. 서버 검증이 쓸 **킬 장부**가 핵심이다.
+- **목적:** 한 판의 시작 스냅샷과 결산을 [api-spec.md](../api-spec.md)의 `battle` 엔트리로 만들어 결산 시점에 로그에 기록한다. 서버 검증이 쓸 **킬 장부**가 핵심이다.
 - **요구사항**
   1. **킬 장부:** 처치를 `(종류, Tier, 크기, 황금)`별로 세고, 황금 보너스 치명타 수(`goldenCrits`)를 센다. 현재 `EnemyRoster`는 종류별로만 센다(`_killsByKind`, `GetKillCounts()`). 기존 API는 유지하고 장부용(`GetKillLedger()`)을 더한다. Tier, 크기, 황금이 장부에 필요한 이유는 Gold가 Tier에 따라 1에서 7776까지 6배씩 차이 나고, 크기 k는 Gold와 EXP에 k배, 황금은 Gold 배율과 보너스 치명타가 붙기 때문이다(`EnemyDefinition.StatsAt`, `SizeRule`, `DeathRewards`).
   2. **시작 스냅샷:** `GameSessionFactory.Create`가 만드는 값을 불변 스냅샷으로 노출한다: `growthStage`, `upgrades`(60개 수치 전부, `statId` → 값), `supply`(`StartSupplyOf` 결과: 변환까지 반영한 종류별 시작 수), `seed`.
@@ -343,7 +342,7 @@ A7'는 독립
 - **통합 2 (전투 L1 end-to-end):** C1과 C3를 붙이고 골든 케이스로 오탐을 확인한다.
 - **통합 3 (시나리오):** 아래 S1~S7 전부.
 
-**규모 합계:** 클라이언트 약 17.5인일(A1 1.5, A4' 0.5, A7' 0.5, C0 1.5, C1 3.5, B4 3, B5a 3, B5 3.5), 서버 약 19.5인일(A2 3, B2 3.5, B3 2, C2 2, C4a 1.5, C4b 1.5, C3 4.5, F1 1.5). 합계 약 37인일에 통합과 수정(15% 안팎, 약 5.5인일)을 더하면 약 42인일이다. 클라이언트 API 계층(B5a)이 코드에 없어서 처음 추정보다 약 3인일이 늘었다.
+**규모 합계:** 클라이언트 약 18인일(A1 1.5, A4' 1, A7' 0.5, C0 1.5, C1 3.5, B4 3, B5a 3, B5 3.5), 서버 약 19.5인일(A2 3, B2 3.5, B3 2, C2 2, C4a 1.5, C4b 1.5, C3 4.5, F1 1.5). 합계 약 37.5인일에 통합과 수정(15% 안팎, 약 5.5인일)을 더하면 약 43인일이다. 클라이언트 API 계층(B5a)이 코드에 없어서, 그리고 클라이언트 번들 해시(A4')를 빌드 시점 계산으로 바꾸면서 처음 추정보다 약 3.5인일이 늘었다.
 
 ## 6. 완료 정의 (시나리오)
 
@@ -364,7 +363,9 @@ A7'는 독립
 - **클라이언트 합계가 커졌다.** B5a가 새로 필요하고 B5가 가장 큰 단일 작업이다. 클라이언트 폴리싱과 겹치면 통합 1 전에 진척을 확인하고, 필요하면 C1 일부를 나눈다.
 - **서버 롤백이 로컬 저장소에 되살아나는 문제**(`ProgressSave.Capture`의 "큰 값을 되돌려 적는" 동작)를 B5에서 반드시 처리해야 한다. 놓치면 S3에서 드러난다.
 - **노드 데이터가 어긋나면 정상 구매가 거절된다.** A7'로 한 번 맞추고 이번 기간에는 노드 수치를 수정하지 않는다.
-- **내보내기를 빠뜨린 클라이언트는 S6처럼 드러난다.** 서버를 먼저 배포한다는 운영 규칙을 지킨다.
+- **내보내기를 빠뜨린 클라이언트는 S6처럼 드러난다.** 서버를 먼저 배포한다는 운영 규칙을 지킨다. 서버가 읽지 않는 필드(이동 속도 등)만 바꿔도 번들 해시가 바뀌므로 서버 재배포가 필요하다(파일 전체가 해시 대상이다).
+- **빌드 해시 파일이 없는 빌드는 전투 엔트리를 만들지 않는다**(A4'). 에디터를 거치지 않고 만든 빌드로는 전투 진행이 서버에 올라가지 않으므로, 배포 빌드는 에디터 빌드 파이프라인을 거쳐야 한다.
+- **Newtonsoft는 전이 의존이다.** A1에서 `manifest.json`에 명시 추가하지 않으면 다른 패키지를 정리할 때 사라질 수 있다.
 
 **모바일 대상 고려** (범위 안)
 
