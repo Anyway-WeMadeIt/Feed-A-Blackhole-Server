@@ -107,7 +107,8 @@ CSV는 **필수 칸 + `Memo`** 로 이루어지고, 머리칸 이름은 영문�
 
 노드 파일은 전투 데이터(`battle/battle.json`)와 함께 **콘텐츠 묶음** 하나로 버전이 매겨진다. 버전은 묶음 파일들의 **바이트**로 계산한 `contentVersion`이며, 클라이언트도 같은 값을 계산해 로그에 싣는다([계약 1.3](server-sync-contracts.md#13-manifestjson과-콘텐츠-버전)).
 
-- 현재 코드의 `NodeTree.nodeContentVersion()`(불러온 의미의 해시)은 노드만 보는 옛 버전이다. 서버 콘텐츠 로드 작업(W0-3)에서 묶음의 `contentVersion`으로 대체한다.
+- 서버는 시작할 때 목차(`manifest.json`)의 `contentVersion`을 파일 바이트로 다시 계산해 확인하고, 다르면 시작하지 않는다. 확인한 값은 `ContentManifest` 빈으로 보관하고, 동기화가 로그의 버전과 비교하는 데 쓴다.
+- 예전에 노드만 보던 `nodeContentVersion`(불러온 의미의 해시)은 W0-3에서 없앴다.
 - 바이트로 계산하므로 `Memo`나 서식만 바꿔도 버전이 바뀐다. 이 저장소에서 파일을 손으로 고치지 않는 이유다.
 
 ## 콘텐츠를 고치는 방법

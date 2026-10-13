@@ -77,7 +77,7 @@ content/
 - 파일 바이트를 그대로 해시하므로, 내보내기 도구가 쓴 파일과 서버가 읽는 파일이 같으면 버전도 같다. 파싱 결과를 정규화해 해시하지 않는다(언어 간 정규화 차이를 없애기 위해서다).
 - **서버**는 시작할 때 버전을 다시 계산해 `manifest.json`의 값과 비교한다. 다르면(손으로 고친 경우) 시작하지 않는다.
 - **클라이언트**는 빌드할 때 내보내기 도구와 같은 루틴으로 묶음을 메모리에서 만들어 버전을 계산하고, 빌드에 넣는다(W0-2). 그래서 내보내기를 잊어도 클라이언트 버전은 실제 콘텐츠를 따르고, 서버 버전과 달라지는 것으로 드러난다.
-- 서버의 기존 `nodeContentVersion`(파싱 결과의 정규형 해시)은 이 `contentVersion`으로 대체한다.
+- 서버의 기존 `nodeContentVersion`(파싱 결과의 정규형 해시)은 이 `contentVersion`으로 대체했다(W0-3).
 
 ### 1.4 `battle.json`
 
@@ -301,7 +301,7 @@ public interface KindSetup {
 
 **샘플 묶음** (`contentVersion` = `4d6c398ad1f5e49c`):
 
-- `nodes/`: 2026-10-12 클라이언트 `dev`의 노드 시트와 `NodeCatalog.asset`을 `tools/import_node_content.py --out`으로 변환한 것(배치 노드 276개, 수치 71개). 현재 `src/main/resources/content/nodes/`(노드 247개, 수치 60개)보다 새것이다.
+- `nodes/`: 2026-10-12 클라이언트 `dev`의 노드 시트와 `NodeCatalog.asset`을 `tools/import_node_content.py --out`으로 변환한 것(배치 노드 276개, 수치 71개). (당시 서버의 노드 파일은 노드 247개, 수치 60개였다. W0-3에서 실제 묶음으로 교체했다.)
 - `battle/battle.json`: 같은 시점의 클라이언트 에셋(`BattleRules`, `HqGrowthSetup`, `EnemyCatalog`과 적 에셋 5개, `EnemySupplySetup`) 값. `stats`는 `EnemyUpgradeStats`를 손으로 옮겼다.
 - 목차의 버전은 1.3의 계산법을 Python으로 따로 구현해 만들었고, Java 구현(`ContentVersion`)이 같은 값을 내는 것을 `ContentVersionTests`가 확인한다.
 - 실제 묶음은 W0-1(내보내기 도구)이 만든다. 그때 이 샘플과 구조가 같아야 하고(W0-1 완료 조건), 값은 그 시점 콘텐츠를 따른다.
@@ -951,7 +951,7 @@ public enum SuspicionReason {
 
 - 위치: `sync/controller/SyncController`, `sync/service/`(`SyncRequestReader` 요청 전체 400·413, `LogParser` 로그 형식, `SyncService` 엔진, `JpaSyncContext`, `LogHandlerRegistry`), `sync/dto/`
 - 요청 본문은 글자로 받아 직접 읽는다. 로그 하나의 형식 오류를 요청 전체의 400이 아니라 그 로그의 `MALFORMED_LOG`로 처리하기 위해서다.
-- 서버 콘텐츠 버전은 `ServerContentVersion` 빈이 준다. **임시로** 노드만 본 옛 버전(`NodeTree.nodeContentVersion()`)을 쓰며, W0-3이 병합되면 묶음 목차의 `contentVersion`으로 바꾼다. 그 전까지 실제 클라이언트의 로그는 버전 불일치로 거부된다.
+- 서버 콘텐츠 버전은 `ServerContentVersion` 빈이 준다. 시작할 때 검증한 묶음 목차의 `contentVersion`(`ContentManifest`, W0-3)이다(`sync/config/SyncConfig`).
 - 진행도가 바뀌면 옛 저장 API와 섞이지 않도록 `revision`도 오른다(W1-7에서 제거).
 - 새 게임은 산 노드 행을 하나씩 지운다. 벌크 삭제가 영속성 컨텍스트를 비워 잠근 진행도 엔티티까지 떼어 내기 때문이다.
 - 테스트(`SyncApiTests`, 19개)는 빈으로 등록하지 않은 테스트용 처리기로 엔진의 몫만 본다(실제 처리기가 생겨도 겹치지 않는다).

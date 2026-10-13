@@ -1,0 +1,315 @@
+{
+  "rules": {
+    "timeLimitSeconds": 12,
+    "killTimeBonusSeconds": 0.3
+  },
+  "growth": {
+    "levelExp": [
+      80,
+      350,
+      1200,
+      3500,
+      9000,
+      20000,
+      65000,
+      110000,
+      170000,
+      250000,
+      290000,
+      330000,
+      390000,
+      490000,
+      650000,
+      1200000,
+      3000000,
+      9500000,
+      12000000,
+      18000000,
+      77600000,
+      83600000,
+      90000000,
+      96800000,
+      104000000,
+      112000000,
+      132000000,
+      150000000,
+      168000000,
+      180000000,
+      6000000000,
+      9000000000,
+      13000000000,
+      17000000000,
+      23000000000,
+      35000000000,
+      55000000000,
+      90000000000,
+      130000000000,
+      190000000000,
+      370000000000,
+      1050000000000
+    ],
+    "milestones": [
+      {
+        "level": 10,
+        "targetGold": 690000
+      },
+      {
+        "level": 20,
+        "targetGold": 5600000
+      },
+      {
+        "level": 30,
+        "targetGold": 100000000000
+      },
+      {
+        "level": 40,
+        "targetGold": 200000000000000
+      }
+    ]
+  },
+  "stats": {
+    "timer": "timer",
+    "growthTime": "growth.time"
+  },
+  "enemies": [
+    {
+      "enemyId": "asteroid",
+      "pickup": false,
+      "upgradesTo": "planet",
+      "tiers": [
+        {
+          "gold": 1,
+          "exp": 1
+        },
+        {
+          "gold": 6,
+          "exp": 3
+        },
+        {
+          "gold": 36,
+          "exp": 9
+        },
+        {
+          "gold": 220,
+          "exp": 27
+        },
+        {
+          "gold": 1300,
+          "exp": 81
+        },
+        {
+          "gold": 7800,
+          "exp": 243
+        }
+      ],
+      "traits": [
+        "golden",
+        "electric"
+      ],
+      "golden": {
+        "multiplier": 50,
+        "critChance": 0,
+        "critRewardScale": 1
+      },
+      "stats": {
+        "mass": "asteroid.massScale",
+        "size": "asteroid.size",
+        "startSupply": "asteroid.count",
+        "growthSupply": "growth.asteroids",
+        "upgrade": "asteroid.toPlanet",
+        "timeChance": "asteroid.timeChance",
+        "traitChance": {
+          "golden": "goldenAsteroid.spawnChance",
+          "electric": "electricAsteroid.spawnChance"
+        },
+        "goldenMultiplier": "goldenAsteroid.rewardScale",
+        "goldenCritChance": "goldenAsteroid.critChance",
+        "goldenCritRewardScale": "goldenAsteroid.critRewardScale"
+      }
+    },
+    {
+      "enemyId": "planet",
+      "pickup": false,
+      "upgradesTo": "star",
+      "tiers": [
+        {
+          "gold": 290000,
+          "exp": 1000
+        },
+        {
+          "gold": 1400000,
+          "exp": 1500
+        },
+        {
+          "gold": 7100000,
+          "exp": 2200
+        },
+        {
+          "gold": 29000000,
+          "exp": 3300
+        },
+        {
+          "gold": 86000000,
+          "exp": 5000
+        },
+        {
+          "gold": 290000000,
+          "exp": 11000
+        }
+      ],
+      "traits": [
+        "moon"
+      ],
+      "golden": null,
+      "stats": {
+        "mass": "planet.massScale",
+        "size": "planet.size",
+        "startSupply": null,
+        "growthSupply": "growth.planets",
+        "upgrade": "planet.toStar",
+        "timeChance": "planet.timeChance",
+        "traitChance": {
+          "moon": "moonPlanet.spawnChance"
+        },
+        "goldenMultiplier": null,
+        "goldenCritChance": null,
+        "goldenCritRewardScale": null
+      }
+    },
+    {
+      "enemyId": "star",
+      "pickup": false,
+      "upgradesTo": "galaxy",
+      "tiers": [
+        {
+          "gold": 50000000000,
+          "exp": 1000000
+        },
+        {
+          "gold": 100000000000,
+          "exp": 1500000
+        },
+        {
+          "gold": 200000000000,
+          "exp": 2200000
+        },
+        {
+          "gold": 400000000000,
+          "exp": 3300000
+        },
+        {
+          "gold": 600000000000,
+          "exp": 5000000
+        },
+        {
+          "gold": 1100000000000,
+          "exp": 11000000
+        }
+      ],
+      "traits": [
+        "electric",
+        "laser",
+        "supernova"
+      ],
+      "golden": null,
+      "stats": {
+        "mass": "star.massScale",
+        "size": "star.size",
+        "startSupply": null,
+        "growthSupply": "growth.stars",
+        "upgrade": "star.toGalaxy",
+        "timeChance": "star.timeChance",
+        "traitChance": {
+          "electric": "electricStar.spawnChance",
+          "laser": "laserStar.spawnChance",
+          "supernova": "supernovaStar.spawnChance"
+        },
+        "goldenMultiplier": null,
+        "goldenCritChance": null,
+        "goldenCritRewardScale": null
+      }
+    },
+    {
+      "enemyId": "comet",
+      "pickup": true,
+      "upgradesTo": null,
+      "tiers": [
+        {
+          "gold": 0,
+          "exp": 0
+        }
+      ],
+      "traits": [
+        "comet"
+      ],
+      "golden": null,
+      "stats": {
+        "mass": null,
+        "size": null,
+        "startSupply": null,
+        "growthSupply": null,
+        "upgrade": null,
+        "timeChance": null,
+        "traitChance": {},
+        "goldenMultiplier": null,
+        "goldenCritChance": null,
+        "goldenCritRewardScale": null
+      }
+    },
+    {
+      "enemyId": "galaxy",
+      "pickup": false,
+      "upgradesTo": null,
+      "tiers": [
+        {
+          "gold": 1000000000000,
+          "exp": 10000000
+        },
+        {
+          "gold": 2000000000000,
+          "exp": 15000000
+        },
+        {
+          "gold": 4000000000000,
+          "exp": 22000000
+        },
+        {
+          "gold": 8000000000000,
+          "exp": 33000000
+        },
+        {
+          "gold": 12000000000000,
+          "exp": 50000000
+        },
+        {
+          "gold": 22000000000000,
+          "exp": 110000000
+        }
+      ],
+      "traits": [
+        "gravity"
+      ],
+      "golden": null,
+      "stats": {
+        "mass": "galaxy.massScale",
+        "size": "galaxy.size",
+        "startSupply": null,
+        "growthSupply": "growth.galaxies",
+        "upgrade": null,
+        "timeChance": "galaxy.timeChance",
+        "traitChance": {
+          "gravity": "gravityGalaxy.spawnChance"
+        },
+        "goldenMultiplier": null,
+        "goldenCritChance": null,
+        "goldenCritRewardScale": null
+      }
+    }
+  ],
+  "startSupply": [
+    {
+      "enemyId": "asteroid",
+      "count": 12
+    }
+  ]
+}

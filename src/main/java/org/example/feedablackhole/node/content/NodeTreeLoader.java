@@ -60,8 +60,7 @@ public final class NodeTreeLoader {
             }
         }
 
-        String nodeContentVersion = NodeContentVersion.of(content, placements, graph);
-        return new NodeTreeLoadResult(new NodeTree(graph, nodes, placements, content, nodeContentVersion, unplaced), diagnostics);
+        return new NodeTreeLoadResult(new NodeTree(graph, nodes, placements, content, unplaced), diagnostics);
     }
 
     // 그래프 칸만 읽는다. 선은 방향이 없다: 한쪽에만 적어도, 양쪽에 적어도 같은 선 하나다.

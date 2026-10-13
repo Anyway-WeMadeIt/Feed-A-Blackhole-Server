@@ -1,14 +1,15 @@
 package org.example.feedablackhole.node.content;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 실제 콘텐츠 파일(src/main/resources/content/nodes)을 읽어 확인한다. 콘텐츠를 고친 PR은 이 테스트로 검증된다:
@@ -81,7 +82,18 @@ class RealNodeContentTests {
             "laserStar.critBonus",
             "supernovaStar.range",
             "supernovaStar.hpDamage",
-            "supernovaStar.spawnChance");
+            "supernovaStar.spawnChance",
+            "growth.galaxies",
+            "star.toGalaxy",
+            "galaxy.size",
+            "galaxy.massScale",
+            "galaxy.respawnChance",
+            "galaxy.timeChance",
+            "breaker.galaxyBonusDamage",
+            "gravityGalaxy.spawnChance",
+            "gravityGalaxy.radius",
+            "gravityGalaxy.force",
+            "gravityGalaxy.duration");
 
     private static NodeTree tree;
 
@@ -98,12 +110,12 @@ class RealNodeContentTests {
 
     @Test
     void sizesMatchTheContentThatWasImported() {
-        assertThat(tree.content().stats()).hasSize(60);
-        assertThat(tree.content().nodes()).hasSize(247);
-        assertThat(tree.nodes()).hasSize(247);
-        assertThat(tree.content().nodes().stream().mapToInt(NodeDefinition::maxRank).sum()).isEqualTo(319);
-        assertThat(tree.graph().links()).hasSize(364);
-        assertThat(tree.graph().nodes().stream().filter(tree.graph()::isStart)).hasSize(4);
+        assertThat(tree.content().stats()).hasSize(71);
+        assertThat(tree.content().nodes()).hasSize(276);
+        assertThat(tree.nodes()).hasSize(276);
+        assertThat(tree.content().nodes().stream().mapToInt(NodeDefinition::maxRank).sum()).isEqualTo(348);
+        assertThat(tree.graph().links()).hasSize(311);
+        assertThat(tree.graph().nodes().stream().filter(tree.graph()::isStart)).hasSize(1);
         assertThat(tree.unplaced()).isEmpty();
     }
 
@@ -128,10 +140,10 @@ class RealNodeContentTests {
         assertThat(timer02.rankAt(1).cost()).isEqualTo(2_600_000_000_000L);
 
         assertThat(tree.content().nodes().stream().filter(node -> node.maxRank() == 10)).hasSize(8);
-        assertThat(tree.content().nodes().stream().filter(node -> node.maxRank() == 1)).hasSize(239);
+        assertThat(tree.content().nodes().stream().filter(node -> node.maxRank() == 1)).hasSize(268);
         assertThat(tree.content().nodes().stream()
                 .flatMap(node -> node.ranks().stream()).mapToLong(NodeRankDefinition::cost).max().orElseThrow())
-                .isEqualTo(1_000_000_000_000_000L);
+                .isEqualTo(530_224_968_650_000L);   // 최대 비용
     }
 
     @Test
@@ -147,13 +159,6 @@ class RealNodeContentTests {
     }
 
     @Test
-    void nodeContentVersionIsStableAcrossLoads() {
-        NodeTree again = NodeTreeFactory.load(realFiles());
-
-        assertThat(again.nodeContentVersion()).isEqualTo(tree.nodeContentVersion()).matches("[0-9a-f]{16}");
-    }
-
-    @Test
     void columnsAfterMemoAndWindowsLineEndingsDoNotChangeTheRealContent() {
         NodeContentFiles real = realFiles();
         NodeContentFiles decorated = new NodeContentFiles(
@@ -162,7 +167,6 @@ class RealNodeContentTests {
 
         NodeTree other = NodeTreeFactory.load(decorated);
 
-        assertThat(other.nodeContentVersion()).isEqualTo(tree.nodeContentVersion());
         assertThat(other.content().stats()).isEqualTo(tree.content().stats());
         assertThat(other.content().nodes()).isEqualTo(tree.content().nodes());
     }

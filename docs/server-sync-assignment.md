@@ -128,7 +128,7 @@ C  ▕ W2-1 ▏ W2-2 ▏ W2-3 ▏ W3-1 ▏ W0-2 ▏ W3-4 ▏ W3-5 ▏ W4-1a ▏ 
 
 B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 패키지는 `battle/content/`(전투 콘텐츠), `battle/rules/`(전투 규칙)와 `sync/handler/`(처리기)를 주로 쓴다. `sync/` 루트(엔진, 컨트롤러)는 A의 영역이다.
 
-#### W0-3. 전투 콘텐츠 로드 (M, 2.5일, 첫 작업)
+#### W0-3. 전투 콘텐츠 로드 (M, 2.5일, 첫 작업) — 완료
 
 - **목표**: 계약 1.2~1.5의 묶음(`content/manifest.json`, `content/nodes/*`, `content/battle/battle.json`)을 시작 시 로드한다.
   - `battle.json`을 계약 1.5 객체(`BattleContent`)로 만들고 1.5의 로더 검증을 한다. 콘텐츠가 잘못되면 서버를 시작하지 않는다(기존 `NodeContentConfig` 방식).
