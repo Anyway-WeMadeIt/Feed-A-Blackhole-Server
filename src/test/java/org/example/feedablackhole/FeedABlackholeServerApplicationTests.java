@@ -2,6 +2,8 @@ package org.example.feedablackhole;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.example.feedablackhole.battle.content.BattleContent;
+import org.example.feedablackhole.content.ContentManifest;
 import org.example.feedablackhole.node.content.NodeTree;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +21,12 @@ class FeedABlackholeServerApplicationTests {
     @Autowired
     private NodeTree nodeTree;
 
+    @Autowired
+    private ContentManifest contentManifest;
+
+    @Autowired
+    private BattleContent battleContent;
+
     @Test
     void contextLoads() {
     }
@@ -31,8 +39,10 @@ class FeedABlackholeServerApplicationTests {
     }
 
     @Test
-    void nodeContentIsLoadedAtStartup() {
-        assertThat(nodeTree.nodes()).hasSize(247);
+    void contentBundleIsLoadedAtStartup() {
+        assertThat(nodeTree.nodes()).hasSize(276);
+        assertThat(battleContent.enemies()).hasSize(5);
+        assertThat(contentManifest.contentVersion()).matches("[0-9a-f]{16}");
     }
 
 }
