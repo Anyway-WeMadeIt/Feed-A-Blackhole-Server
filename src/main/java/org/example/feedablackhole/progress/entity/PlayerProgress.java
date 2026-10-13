@@ -89,4 +89,48 @@ public class PlayerProgress extends BaseTimeEntity {
         update(0, INITIAL_GROWTH_STAGE);
     }
 
+    // ---------- 동기화(로그 적용) ----------
+    // 값을 바꾸는 메서드는 revision도 올린다. 옛 저장 API(W1-7에서 제거)가 동기화로 바뀐 진행도를 덮어쓰지 않게 한다.
+
+    /** Gold를 바꾼다(0 이상). */
+    public void changeGold(long gold) {
+        if (gold < 0) {
+            throw new IllegalArgumentException("Gold는 0 이상이다: " + gold);
+        }
+        this.gold = gold;
+        this.revision++;
+    }
+
+    /** 성장도를 바꾼다(0 이상). */
+    public void changeGrowthStage(int growthStage) {
+        if (growthStage < 0) {
+            throw new IllegalArgumentException("성장도는 0 이상이다: " + growthStage);
+        }
+        this.growthStage = growthStage;
+        this.revision++;
+    }
+
+    /** 로그 하나를 반영했다. seq는 지금 값 + 1이어야 한다. */
+    public void markApplied(long seq) {
+        if (seq != lastAppliedSeq + 1) {
+            throw new IllegalArgumentException("다음 seq는 " + (lastAppliedSeq + 1) + "이다: " + seq);
+        }
+        this.lastAppliedSeq = seq;
+    }
+
+    /** 판을 열었다(battle_run.id). */
+    public void openRun(long runId) {
+        this.openRunId = runId;
+    }
+
+    /** 열린 판을 닫았다. */
+    public void closeRun() {
+        this.openRunId = null;
+    }
+
+    /** 의심 표시가 남은 판이 하나 늘었다. */
+    public void countSuspiciousRun() {
+        this.suspiciousCount++;
+    }
+
 }
