@@ -137,21 +137,6 @@ class KindCompositionTests {
         return KindComposition.from(battle.enemy(enemyId), NodeUpgradeValues.of(tree, nodeRanks));
     }
 
-    // 수치마다 늘어난 양을 정해 주는 간단한 UpgradeValues. 없는 수치는 0
-    private record FixedGains(Map<String, Float> gains) implements UpgradeValues {
-
-        @Override
-        public float valueOf(String statId) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public float gainOf(String statId) {
-            return gains.getOrDefault(statId, 0f);
-        }
-
-    }
-
     // 실제 콘텐츠 폴더에서 파일 바이트를 읽는다. 없으면 null
     private static byte[] bytes(String path) {
         try (InputStream in = KindCompositionTests.class.getResourceAsStream(CONTENT + path)) {
