@@ -13,6 +13,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -165,7 +166,7 @@ public class BattleContentLoader {
         // 규칙을 하나씩 여기에 추가
         verifyEnemies(content.enemies(), into);
         verifyGrowth(content.growth(), into);
-//        verifyStartSupply(content, into);
+        verifyStartSupply(content, into);
     }
 
     // 적 종류에 대한 규칙
@@ -237,11 +238,11 @@ public class BattleContentLoader {
                 // 0은 정상이다(혜성의 gold: 0). 음수일 때만 문제다
                 if (enemy.tiers().get(i).gold() < 0) {
                     into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].tiers[" + i + "].gold",
-                            "0 이상이어야 한다."));
+                            "Gold가 0 이상이어야 한다."));
                 }
                 if (enemy.tiers().get(i).exp() < 0) {
                     into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].tiers[" + i + "].exp",
-                            "0 이상이어야 한다."));
+                            "EXP가 0 이상이어야 한다."));
                 }
             }
 
@@ -316,6 +317,41 @@ public class BattleContentLoader {
                         "앞 이정표보다 커야 한다."));
             }
             previousGold = milestone.targetGold();
+        }
+    }
+
+    /**
+     * 시작 공급(startSupply)에 대한 규칙(규칙 8)을 검사한다.
+     * 공급 한 건마다 (1) 종류가 존재하고 (2) 수거형이 아니고 (3) 마릿수가 0 이상인지 본다.
+     *
+     * @param content 시작 공급 목록과, 종류를 id로 찾는 findEnemy를 가진 전투 콘텐츠
+     * @param into    어긴 곳을 모으는 목록(바로 던지지 않는다)
+     */
+    private static void verifyStartSupply(BattleContent content, List<ContentDiagnostic> into) {
+        List<SupplyEntry> startSupplies = content.startSupply(); // 판 시작 때의 공급 목록(노드 반영 전)
+
+        for (int i = 0; i < startSupplies.size(); i++) {
+            SupplyEntry startSupply = startSupplies.get(i);
+
+            // 이 공급이 가리키는 적 종류를 찾는다. 없으면 빈 Optional이 돌아온다
+            Optional<EnemyKindDefinition> found = content.findEnemy(startSupply.enemyId());
+            if (found.isEmpty()) {
+                // 없는 종류: 종류 자체가 없으니 pickup()을 볼 수 없다. 그래서 수거형 검사는 else if로 분리했다
+                into.add(new ContentDiagnostic("startSupply[" + i + "].enemyId",
+                        "없는 적 종류다: '" + startSupply.enemyId() + "'."));
+            } else if (found.get().pickup()) {
+                // 수거형(혜성)은 주기적으로 나타나는 적이라 시작 공급에 쓸 수 없다.
+                // else 쪽에서만 get()을 부르므로, 빈 Optional에서 꺼내다 터지는 일은 없다
+                into.add(new ContentDiagnostic("startSupply[" + i + "].enemyId",
+                        "수거형 '" + startSupply.enemyId() + "'는 시작 공급에 쓸 수 없다."));
+            }
+
+            // 마릿수는 종류와 무관한 별개의 검사라서 위의 if 밖에 둔다(종류가 틀려도 마릿수 오류는 따로 보고된다).
+            // 0은 정상이고 음수만 오류다
+            if (startSupply.count() < 0) {
+                into.add(new ContentDiagnostic("startSupply[" + i + "].count",
+                        "적의 수는 0 이상이어야 한다."));
+            }
         }
     }
 

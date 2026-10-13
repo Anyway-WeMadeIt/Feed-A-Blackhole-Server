@@ -223,4 +223,50 @@ class BattleContentLoaderTests {
                 .hasMessageContaining("growth.milestones[1].targetGold")
                 .hasMessageContaining("앞 이정표보다 커야");
     }
+
+    /**
+     * 시작 공급에 수거형(혜성)을 쓰면 알리는지 확인한다(규칙 8).
+     */
+    @Test
+    void startSupplyMustNotUsePickupKind() throws IOException {
+        // 시작 공급의 종류를 asteroid에서 comet(수거형)으로 바꾼다. 이 문자열은 샘플에 한 번만 나온다
+        String broken = read().replace(
+                "      \"enemyId\": \"asteroid\",\n      \"count\": 20",
+                "      \"enemyId\": \"comet\",\n      \"count\": 20");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("startSupply[0].enemyId")
+                .hasMessageContaining("수거형");
+    }
+
+    /**
+     * 시작 공급이 없는 적 종류를 가리키면 알리는지 확인한다(규칙 8).
+     */
+    @Test
+    void startSupplyMustUseExistingKind() throws IOException {
+        // 시작 공급의 종류를 존재하지 않는 nebula로 바꾼다
+        String broken = read().replace(
+                "      \"enemyId\": \"asteroid\",\n      \"count\": 20",
+                "      \"enemyId\": \"nebula\",\n      \"count\": 20");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("startSupply[0].enemyId")
+                .hasMessageContaining("없는 적 종류");
+    }
+
+    /**
+     * 시작 공급의 마릿수가 음수이면 알리는지 확인한다(규칙 8).
+     */
+    @Test
+    void startSupplyCountMustNotBeNegative() throws IOException {
+        // 마릿수 20을 -1로 바꾼다. 이 문자열도 샘플에 한 번만 나온다
+        String broken = read().replace("\"count\": 20", "\"count\": -1");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("startSupply[0].count")
+                .hasMessageContaining("0 이상");
+    }
 }
