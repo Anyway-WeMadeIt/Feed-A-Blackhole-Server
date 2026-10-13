@@ -15,6 +15,7 @@ import org.example.feedablackhole.sync.entity.SyncLogRecord;
 import org.example.feedablackhole.sync.entity.SyncLogResult;
 import org.example.feedablackhole.sync.handler.HandleResult;
 import org.example.feedablackhole.sync.handler.LogHandler;
+import org.example.feedablackhole.sync.handler.SyncContext;
 import org.example.feedablackhole.sync.log.RejectCode;
 import org.example.feedablackhole.sync.repository.BattleRunRepository;
 import org.example.feedablackhole.sync.repository.SyncLogRecordRepository;
@@ -108,13 +109,12 @@ public class SyncService {
         return null;
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private HandleResult handle(ParsedLog parsed, JpaSyncContext context) {
-        LogHandler handler = handlers.find(parsed.type())
+        LogHandler<?> handler = handlers.find(parsed.type())
                 .orElseThrow(() -> new IllegalStateException("로그 타입 " + parsed.type() + "의 처리기가 없다."));
         context.begin(parsed.seq());
         int before = context.changes();
-        HandleResult result = handler.handle(parsed.payload(), context);
+        HandleResult result = invoke(handler, parsed.payload(), context);
         if (result == null) {
             throw new IllegalStateException(parsed.type() + " 처리기가 결과를 돌려주지 않았다.");
         }
@@ -122,6 +122,12 @@ public class SyncService {
             throw new IllegalStateException(parsed.type() + " 처리기가 거부하면서 진행도를 바꿨다. seq=" + parsed.seq());
         }
         return result;
+    }
+
+    // LogHandler<?>의 payload 타입 P를 포착해, payload를 그 타입으로 확인한 뒤 넘긴다.
+    // 등록소가 시작 때 payloadType()을 계약의 타입과 맞춰 두었으므로 정상이면 cast는 실패하지 않는다. 어긋나면 여기서 바로 드러난다.
+    private static <P> HandleResult invoke(LogHandler<P> handler, Object payload, SyncContext context) {
+        return handler.handle(handler.payloadType().cast(payload), context);
     }
 
     private static SyncLogRecord record(PlayerProgress progress, ParsedLog parsed, IncomingLog log,
