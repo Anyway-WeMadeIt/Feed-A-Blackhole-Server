@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,7 +28,7 @@ class BattleContentLoaderTests {
     @Test
     void readsTheSampleContent() throws IOException {
         // 파일 내용(글자)을 로더에 넘겨 BattleContent를 만든다
-        BattleContent content = BattleContentLoader.load(read());
+        BattleContent content = BattleContentLoader.load(read(), null);
 
         // 적 종류 5개: asteroid, planet, star, comet, galaxy
         assertThat(content.enemies()).hasSize(5);
@@ -65,7 +67,7 @@ class BattleContentLoaderTests {
         String broken = read().replace("\"enemyId\": \"planet\",", "\"enemyId\": \"asteroid\",");
 
         // load를 호출하면 예외가 던져져야 테스트가 통과한다. 던져지지 않으면 실패한다
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 // 던져진 예외의 종류가 ContentLoadException인지 확인 (NPE 등 다른 예외면 실패)
                 .isInstanceOf(ContentLoadException.class)
                 // 문제 1: asteroid가 두 번 나와서 "중복됐다"
@@ -85,7 +87,7 @@ class BattleContentLoaderTests {
         // replace는 새 문자열을 돌려주므로 반드시 변수에 담아야 한다
         String broken = read().replace("\"upgradesTo\": \"star\",", "\"upgradesTo\": \"asteroid\",");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 // NPE 등이 아니라 ContentLoadException으로 알리는지 확인
                 .isInstanceOf(ContentLoadException.class)
                 // 순환을 알리는 메시지가 있는지 확인
@@ -102,7 +104,7 @@ class BattleContentLoaderTests {
         // 혜성(pickup)을 공급 종류로 바꾸면, 등급이 1개뿐이라 6개가 아니다
         String broken = read().replace("\"pickup\": true,", "\"pickup\": false,");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("enemies[comet].tiers")
                 .hasMessageContaining("색 등급은");
@@ -116,7 +118,7 @@ class BattleContentLoaderTests {
         // 소행성의 두 번째 등급 gold(6)를 -6으로 바꾼다. 이 문자열은 샘플에 한 번만 나온다
         String broken = read().replace("\"gold\": 6,", "\"gold\": -6,");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("enemies[asteroid].tiers[1].gold")
                 .hasMessageContaining("0 이상");
@@ -132,7 +134,7 @@ class BattleContentLoaderTests {
                 "        \"moon\"\n      ],\n      \"golden\": null,",
                 "        \"moon\",\n        \"golden\"\n      ],\n      \"golden\": null,");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("enemies[planet].golden")
                 .hasMessageContaining("있어야");
@@ -148,7 +150,7 @@ class BattleContentLoaderTests {
                 "        \"golden\",\n        \"electric\"\n",
                 "        \"electric\"\n");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("enemies[asteroid].golden")
                 .hasMessageContaining("null이어야");
@@ -162,7 +164,7 @@ class BattleContentLoaderTests {
         // 두 번째 값(350)을 첫 번째 값(80)과 같게 바꾼다. 이 문자열은 샘플에 한 번만 나온다
         String broken = read().replace("      350,\n", "      80,\n");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("growth.levelExp[1]")
                 .hasMessageContaining("앞 Level보다 커야");
@@ -176,7 +178,7 @@ class BattleContentLoaderTests {
         // 첫 번째 값(80)을 0으로 바꾼다. 이 문자열도 샘플에 한 번만 나온다
         String broken = read().replace("      80,\n", "      0,\n");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("growth.levelExp[0]")
                 .hasMessageContaining("앞 Level보다 커야");
@@ -190,7 +192,7 @@ class BattleContentLoaderTests {
         // 세 번째 이정표의 Level(30)을 사다리(42단계)보다 큰 43으로 바꾼다. 이 문자열은 샘플에 한 번만 나온다
         String broken = read().replace("\"level\": 30,", "\"level\": 43,");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("growth.milestones[2].level")
                 .hasMessageContaining("사다리");
@@ -204,7 +206,7 @@ class BattleContentLoaderTests {
         // 세 번째 이정표의 Level(30)을 두 번째와 같은 20으로 바꾼다
         String broken = read().replace("\"level\": 30,", "\"level\": 20,");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("growth.milestones[2].level")
                 .hasMessageContaining("앞 이정표보다 커야");
@@ -218,7 +220,7 @@ class BattleContentLoaderTests {
         // 두 번째 이정표의 targetGold(5600000)를 첫 번째와 같은 690000으로 바꾼다
         String broken = read().replace("\"targetGold\": 5600000", "\"targetGold\": 690000");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("growth.milestones[1].targetGold")
                 .hasMessageContaining("앞 이정표보다 커야");
@@ -234,7 +236,7 @@ class BattleContentLoaderTests {
                 "      \"enemyId\": \"asteroid\",\n      \"count\": 20",
                 "      \"enemyId\": \"comet\",\n      \"count\": 20");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("startSupply[0].enemyId")
                 .hasMessageContaining("수거형");
@@ -250,7 +252,7 @@ class BattleContentLoaderTests {
                 "      \"enemyId\": \"asteroid\",\n      \"count\": 20",
                 "      \"enemyId\": \"nebula\",\n      \"count\": 20");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("startSupply[0].enemyId")
                 .hasMessageContaining("없는 적 종류");
@@ -264,9 +266,52 @@ class BattleContentLoaderTests {
         // 마릿수 20을 -1로 바꾼다. 이 문자열도 샘플에 한 번만 나온다
         String broken = read().replace("\"count\": 20", "\"count\": -1");
 
-        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+        assertThatThrownBy(() -> BattleContentLoader.load(broken, null))
                 .isInstanceOf(ContentLoadException.class)
                 .hasMessageContaining("startSupply[0].count")
                 .hasMessageContaining("0 이상");
+    }
+
+    /**
+     * battle.json의 statId가 UpgradeStats 시트에 없으면 알리는지 확인한다(규칙 9).
+     */
+    @Test
+    void statIdMissingFromTheStatSheetIsRejected() throws IOException {
+        // 샘플 UpgradeStats.csv의 StatId를 모으고, 그중 asteroid.count를 뺀다
+        Set<String> statIds = sampleStatIds();
+        statIds.remove("asteroid.count");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(read(), statIds))
+                .isInstanceOf(ContentLoadException.class)
+                // 소행성의 startSupply 수치가 asteroid.count를 가리킨다
+                .hasMessageContaining("enemies[asteroid].stats.startSupply")
+                .hasMessageContaining("UpgradeStats 시트에 없는")
+                .hasMessageContaining("문제 1개");
+    }
+
+    // 샘플 UpgradeStats.csv의 StatId(첫 칸, 머리칸 제외)를 모은다
+    private static Set<String> sampleStatIds() throws IOException {
+        Set<String> ids = new HashSet<>();
+        try (InputStream in = BattleContentLoaderTests.class.getResourceAsStream("/content-sample/nodes/UpgradeStats.csv")) {
+            assertThat(in).isNotNull();
+            String[] lines = new String(in.readAllBytes(), StandardCharsets.UTF_8).split("\n");
+            for (int i = 1; i < lines.length; i++) {
+                if (!lines[i].isBlank()) {
+                    ids.add(lines[i].substring(0, lines[i].indexOf(',')));
+                }
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * 샘플 battle.json의 모든 statId가 샘플 UpgradeStats 시트에 있어서 규칙 9를 통과하는지 확인한다.
+     */
+    @Test
+    void sampleStatIdsAllExistInTheStatSheet() throws IOException {
+        // 예외가 던져지지 않아야 한다(정상 입력에서 잘못 걸리지 않는지 본다)
+        BattleContent content = BattleContentLoader.load(read(), sampleStatIds());
+
+        assertThat(content.enemies()).hasSize(5);
     }
 }

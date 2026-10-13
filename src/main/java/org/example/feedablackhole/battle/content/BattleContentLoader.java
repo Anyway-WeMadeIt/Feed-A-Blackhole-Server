@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 전투 콘텐츠 파일(battle.json)의 글자를 읽어 BattleContent로 만든다.
@@ -20,7 +21,7 @@ import java.util.Map;
  * <li>검증: 다 만든 뒤 규칙을 검사하고, 어긴 곳을 모아서 ContentLoadException 하나로 던진다.
  * </ol>
  */
-public class BattleContentLoader {
+public final class BattleContentLoader {
     // 예외 메시지와 진단에 쓰는 이름 ("전투 콘텐츠을(를) 불러오지 못했다", "battle.json: ...")
     private static final String WHAT = "전투 콘텐츠";
     public static final String FILE = "battle.json";
@@ -72,6 +73,9 @@ public class BattleContentLoader {
 
     // startSupply[i]
     private static final String COUNT = "count";
+
+    private BattleContentLoader () {
+    }
 
     // JSON을 읽는 도구. 소수(0.3 등)를 double이 아닌 BigDecimal로 읽도록 설정한다.
     // double로 읽은 뒤 float으로 줄이면 드물게 값이 달라지기 때문이다(계약 1.7).
@@ -156,7 +160,7 @@ public class BattleContentLoader {
      * @throws ContentLoadException JSON 형식이 틀렸거나, 검증 규칙을 어긴 곳이 하나라도 있을 때
      *                              (어긴 곳은 모두 모아서 한 번에 알린다)
      */
-    public static BattleContent load(String json) {
+    public static BattleContent load(String json, Set<String> statIds) {
         // JSON 형식 자체가 틀리면(괄호 누락 등) 여기서 알린다
         Object root;
         try {
@@ -226,7 +230,7 @@ public class BattleContentLoader {
         BattleContent content = new BattleContent(rulesDef, growthDef, globalStatIds, enemies, startSupply);
 
         // 다 만든 뒤 규칙을 검사하고, 문제가 하나라도 있으면 모아서 던진다
-        List<ContentDiagnostic> diagnostics = BattleContentValidator.validate(content);
+        List<ContentDiagnostic> diagnostics = BattleContentValidator.validate(content, statIds);
         if (!diagnostics.isEmpty()) {
             throw new ContentLoadException(WHAT, diagnostics);
         }

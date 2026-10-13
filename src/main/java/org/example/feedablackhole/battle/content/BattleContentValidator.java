@@ -29,13 +29,18 @@ public final class BattleContentValidator {
      *
      * @return 어긴 곳의 목록. 비어 있으면 규칙에 맞는 콘텐츠다
      */
-    public static List<ContentDiagnostic> validate(BattleContent content) {
+    public static List<ContentDiagnostic> validate(BattleContent content, Set<String> statIds) {
         List<ContentDiagnostic> into = new ArrayList<>(); // 어긴 곳을 모으는 목록(바로 던지지 않는다)
 
         // 규칙을 하나씩 여기에 추가
         verifyEnemies(content.enemies(), into);
         verifyGrowth(content.growth(), into);
         verifyStartSupply(content, into);
+
+        // statIds가 null이면(노드 콘텐츠를 읽지 못해 알 수 없을 때) 규칙 9는 건너뛴다
+        if (statIds != null) {
+            verifyStatIds(content, statIds, into);
+        }
 
         return into;
     }
@@ -246,6 +251,54 @@ public final class BattleContentValidator {
             if (startSupply.count() < 0) {
                 into.add(new ContentDiagnostic("startSupply[" + i + "].count",
                         "적의 수는 0 이상이어야 한다."));
+            }
+        }
+    }
+
+    /**
+     * statId 하나가 시트에 있는지 본다. 이 검사를 값마다 반복해서 부른다.
+     *
+     * @param statId 검사할 값. null이면 "그 종류에 해당 수치가 없다"는 뜻이라 검사하지 않는다
+     * @param at     그 값이 battle.json의 어디에 있는지(진단의 위치)
+     */
+    private static void verifyStatId(String statId, String at, Set<String> statIds, List<ContentDiagnostic> into) {
+        if (statId == null) {
+            return; // 해당 수치가 없는 종류(예: 행성의 startSupply)는 검사할 것이 없다
+        }
+
+        if (!statIds.contains(statId)) {
+            into.add(new ContentDiagnostic(at, "UpgradeStats 시트에 없는 수치 '" + statId + "'다."));
+        }
+    }
+
+    /**
+     * battle.json이 가리키는 statId가 모두 UpgradeStats 시트에 있는지 검사한다(규칙 9).
+     *
+     * @param statIds UpgradeStats 시트의 StatId 전체
+     */
+    private static void verifyStatIds(BattleContent content, Set<String> statIds, List<ContentDiagnostic> into) {
+        // 적 종류에 속하지 않는 수치(제한 시간, Level업당 시간)
+        verifyStatId(content.stats().timer(), "stats.timer", statIds, into);
+        verifyStatId(content.stats().growthTime(), "stats.growthTime", statIds, into);
+
+        // 적 종류마다 판 구성에 닿는 수치
+        for (EnemyKindDefinition enemy : content.enemies()) {
+            String at = "enemies[" + enemy.enemyId() + "].stats"; // 이 종류의 stats 위치(뒤에 키 이름을 붙인다)
+            EnemyStatIds stats = enemy.stats();
+
+            verifyStatId(stats.mass(), at + ".mass", statIds, into);
+            verifyStatId(stats.size(), at + ".size", statIds, into);
+            verifyStatId(stats.startSupply(), at + ".startSupply", statIds, into);
+            verifyStatId(stats.growthSupply(), at + ".growthSupply", statIds, into);
+            verifyStatId(stats.upgrade(), at + ".upgrade", statIds, into);
+            verifyStatId(stats.timeChance(), at + ".timeChance", statIds, into);
+            verifyStatId(stats.goldenMultiplier(), at + ".goldenMultiplier", statIds, into);
+            verifyStatId(stats.goldenCritChance(), at + ".goldenCritChance", statIds, into);
+            verifyStatId(stats.goldenCritRewardScale(), at + ".goldenCritRewardScale", statIds, into);
+
+            // 성질별 생성 확률 수치(성질 id -> statId). 어느 성질인지 위치에 성질 id를 적는다
+            for (Map.Entry<String, String> chance : stats.traitChance().entrySet()) {
+                verifyStatId(chance.getValue(), at + ".traitChance." + chance.getKey(), statIds, into);
             }
         }
     }
