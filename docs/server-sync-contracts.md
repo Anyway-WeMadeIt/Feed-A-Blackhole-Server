@@ -926,7 +926,7 @@ public enum SuspicionReason {
 }
 ```
 
-- 처리기는 Spring 빈으로 등록하고, 엔진은 `LogHandler` 빈들을 `type()`으로 찾는다. 타입마다 정확히 하나여야 한다(시작 시 확인).
+- 처리기는 Spring 빈으로 등록하고, 엔진은 `LogHandler` 빈들을 `type()`으로 찾는다. 같은 타입이 둘 이상이거나 `payloadType()`이 3.3의 타입과 다르면 서버를 시작하지 않는다. 처리기가 없는 타입은 처리기를 나눠 구현하는 동안 경고만 남기고, 그 타입의 로그가 오면 500이다(W1-2 구현).
 - 결산 처리기는 판을 닫는 것(`settleOpenRun`)과 진행도 반영(`earnGold`, `setGrowthStage`)을 둘 다 부른다.
 
 ### 4.4 의심 표시
@@ -947,7 +947,16 @@ public enum SuspicionReason {
 | C21 | `revision` 열은 W1-7(옛 API 제거) 때 지운다 | 옛 API와 그 테스트가 W1-7 전까지 그대로 돌게 한다 |
 | C22 | `timeLimitSeconds` 비교 허용 오차 0.001초 | 같은 float 계산이면 같은 값이 나오므로 작게 둔다 |
 
-### 4.6 산출물
+### 4.6 엔진 구현 메모 (W1-2)
+
+- 위치: `sync/controller/SyncController`, `sync/service/`(`SyncRequestReader` 요청 전체 400·413, `LogParser` 로그 형식, `SyncService` 엔진, `JpaSyncContext`, `LogHandlerRegistry`), `sync/dto/`
+- 요청 본문은 글자로 받아 직접 읽는다. 로그 하나의 형식 오류를 요청 전체의 400이 아니라 그 로그의 `MALFORMED_LOG`로 처리하기 위해서다.
+- 서버 콘텐츠 버전은 `ServerContentVersion` 빈이 준다. **임시로** 노드만 본 옛 버전(`NodeTree.nodeContentVersion()`)을 쓰며, W0-3이 병합되면 묶음 목차의 `contentVersion`으로 바꾼다. 그 전까지 실제 클라이언트의 로그는 버전 불일치로 거부된다.
+- 진행도가 바뀌면 옛 저장 API와 섞이지 않도록 `revision`도 오른다(W1-7에서 제거).
+- 새 게임은 산 노드 행을 하나씩 지운다. 벌크 삭제가 영속성 컨텍스트를 비워 잠근 진행도 엔티티까지 떼어 내기 때문이다.
+- 테스트(`SyncApiTests`, 19개)는 빈으로 등록하지 않은 테스트용 처리기로 엔진의 몫만 본다(실제 처리기가 생겨도 겹치지 않는다).
+
+### 4.7 산출물
 
 서버 저장소 `dev` 기준.
 

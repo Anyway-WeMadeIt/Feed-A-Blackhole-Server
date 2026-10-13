@@ -106,7 +106,7 @@ docker compose up -d        # MySQL 8.4 시작 (healthy가 될 때까지 몇 초
 
 ## 노드 콘텐츠
 
-노드 트리(노드, 비용, 효과, 배치)의 원본은 `src/main/resources/content/nodes/`의 파일이며, 서버가 시작할 때 읽어 검증합니다.
-콘텐츠에 문제가 있으면 모든 문제를 알리고 서버가 시작되지 않습니다. 형식, 규칙, 수정 절차는 [docs/node-content.md](docs/node-content.md)를 참고하세요.
+게임 콘텐츠(노드 트리, 전투 데이터)의 원본은 **클라이언트 저장소**입니다. `src/main/resources/content/`의 파일은 클라이언트의 내보내기 도구(`BlackHole > Server Content > Export...`)가 만든 사본이며, 이 저장소에서 손으로 고치지 않습니다.
+서버는 시작할 때 이 파일들을 읽어 검증하고, 문제가 있으면 모든 문제를 알리고 시작하지 않습니다. 형식과 갱신 절차는 [docs/node-content.md](docs/node-content.md)와 [docs/server-sync-contracts.md](docs/server-sync-contracts.md) 1장을 참고하세요.
 
 협업 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고하세요.
