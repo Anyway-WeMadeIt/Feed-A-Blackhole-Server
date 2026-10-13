@@ -23,7 +23,7 @@ import java.util.Map;
 public class BattleContentLoader {
     // 예외 메시지와 진단에 쓰는 이름 ("전투 콘텐츠을(를) 불러오지 못했다", "battle.json: ...")
     private static final String WHAT = "전투 콘텐츠";
-    private static final String FILE = "battle.json";
+    public static final String FILE = "battle.json";
 
     // ---------- battle.json의 키 이름 ----------
 
