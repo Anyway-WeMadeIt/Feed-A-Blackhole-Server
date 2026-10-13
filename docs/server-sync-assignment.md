@@ -241,7 +241,10 @@ C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서
 #### W0-2. 릴리즈 빌드 콘텐츠 버전 (S, 1일)
 
 - **목표**: 릴리즈 빌드에서도 `contentVersion`이 W0-1과 같은 값이 되게 한다(현재 `Playtest/ContentTag.cs`는 릴리즈에서 `""`). 빌드 전처리에서 W0-1과 같은 루틴으로 묶음을 메모리에서 만들어 계산한다(계약 1.3).
-- **선행**: W0-1.
+  - 에디터 실행(Play 모드)에서도 같은 값이어야 한다. 개발 중 동기화 확인을 에디터에서 하기 때문이다.
+  - 내보내기 루틴: `BlackHole.ContentExport`의 `ServerContentExporter.Export(...)`(입력 모으기는 `Editor/ContentExport/ServerContentExport.Build()` 참고). 결과의 `ContentVersion`이 서버 목차의 값과 같으면 된다.
+- **이 작업이 끝나야 실제 동기화가 동작한다.** 그 전까지 클라이언트 로그는 서버에서 `CONTENT_VERSION_MISMATCH`로 거부된다. 로그 생성기(W3-2)가 이 값을 로그에 싣는다(계획서 2.3).
+- **선행**: W0-1(완료).
 
 #### W3-4. 동기화 전송기 (M, 2.5일)
 
