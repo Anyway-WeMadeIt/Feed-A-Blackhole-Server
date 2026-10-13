@@ -1,10 +1,10 @@
 package org.example.feedablackhole.node.content;
 
+import org.junit.jupiter.api.Test;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.example.feedablackhole.node.content.NodeContentFixture.assertDiagnostic;
 import static org.example.feedablackhole.node.content.NodeContentFixture.diagnosticsOf;
-
-import org.junit.jupiter.api.Test;
 
 /**
  * 시트의 칸 규칙: 필수 칸만 이름으로 찾아 읽고, Memo와 그 오른쪽 칸은 읽는 결과에 영향이 없다.
@@ -20,12 +20,10 @@ class NodeContentColumnTests {
         assertThat(extra.content().stats()).isEqualTo(base.content().stats());
         assertThat(extra.content().nodes()).isEqualTo(base.content().nodes());
         assertThat(extra.placements()).isEqualTo(base.placements());
-        assertThat(extra.nodeContentVersion()).as("의미가 같으면 버전도 같다").isEqualTo(base.nodeContentVersion());
     }
 
     @Test
     void requiredColumnNamesRepeatedAfterMemoDoNotReplaceTheFirstOnes() {
-        // withColumnsAfterMemo는 NodeId·Rank·Cost·Value·StatId 머리칸을 뒤에 한 번 더 두고 쓰레기 값을 채운다.
         NodeTree extra = NodeTreeFactory.load(NodeContentFixture.withCost(
                 NodeContentFixture.withColumnsAfterMemo(NodeContentFixture.COST)));
 
@@ -38,7 +36,6 @@ class NodeContentColumnTests {
 
         assertThat(withoutMemo.content().stats()).isEqualTo(base.content().stats());
         assertThat(withoutMemo.content().nodes()).isEqualTo(base.content().nodes());
-        assertThat(withoutMemo.nodeContentVersion()).isEqualTo(base.nodeContentVersion());
     }
 
     @Test
@@ -46,16 +43,16 @@ class NodeContentColumnTests {
         String richMemo = NodeContentFixture.COST
                 .replace("timer-01,1,2,", "timer-01,1,2,\"쉼표, 따옴표 \"\"인용\"\", 줄\n바꿈\"");
 
-        assertThat(NodeTreeFactory.load(NodeContentFixture.withCost(richMemo)).nodeContentVersion())
-                .isEqualTo(base.nodeContentVersion());
+        assertThat(NodeTreeFactory.load(NodeContentFixture.withCost(richMemo)).content().nodes())
+                .isEqualTo(base.content().nodes());
     }
 
     @Test
     void rowsShorterThanTheHeaderAreReadAsEmptyCells() {
         String shortRows = NodeContentFixture.NODES.replace("timer-01,1,", "timer-01,1").replace("count-01,1,", "count-01,1");
 
-        assertThat(NodeTreeFactory.load(NodeContentFixture.withNodes(shortRows)).nodeContentVersion())
-                .isEqualTo(base.nodeContentVersion());
+        assertThat(NodeTreeFactory.load(NodeContentFixture.withNodes(shortRows)).content().nodes())
+                .isEqualTo(base.content().nodes());
     }
 
     @Test
@@ -78,8 +75,8 @@ class NodeContentColumnTests {
                 .replace("asteroid.count,Int,Flat,5,Add,0,100,", "asteroid.count,Int,Flat,5,Add,0,100,TRUE,")
                 .replace("breaker.speed,Float,Percent,100,Add,0,,", "breaker.speed,Float,Percent,100,Add,0,,not-a-boolean,");
 
-        assertThat(NodeTreeFactory.load(NodeContentFixture.withStats(legacy)).nodeContentVersion())
-                .isEqualTo(base.nodeContentVersion());
+        assertThat(NodeTreeFactory.load(NodeContentFixture.withStats(legacy)).content().stats())
+                .isEqualTo(base.content().stats());
     }
 
 }

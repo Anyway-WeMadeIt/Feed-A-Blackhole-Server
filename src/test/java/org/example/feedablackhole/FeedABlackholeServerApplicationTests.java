@@ -33,7 +33,6 @@ class FeedABlackholeServerApplicationTests {
     @Test
     void nodeContentIsLoadedAtStartup() {
         assertThat(nodeTree.nodes()).hasSize(247);
-        assertThat(nodeTree.nodeContentVersion()).matches("[0-9a-f]{16}");
     }
 
 }

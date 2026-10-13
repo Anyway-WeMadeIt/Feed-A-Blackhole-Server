@@ -1,14 +1,15 @@
 package org.example.feedablackhole.node.content;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 실제 콘텐츠 파일(src/main/resources/content/nodes)을 읽어 확인한다. 콘텐츠를 고친 PR은 이 테스트로 검증된다:
@@ -147,13 +148,6 @@ class RealNodeContentTests {
     }
 
     @Test
-    void nodeContentVersionIsStableAcrossLoads() {
-        NodeTree again = NodeTreeFactory.load(realFiles());
-
-        assertThat(again.nodeContentVersion()).isEqualTo(tree.nodeContentVersion()).matches("[0-9a-f]{16}");
-    }
-
-    @Test
     void columnsAfterMemoAndWindowsLineEndingsDoNotChangeTheRealContent() {
         NodeContentFiles real = realFiles();
         NodeContentFiles decorated = new NodeContentFiles(
@@ -162,7 +156,6 @@ class RealNodeContentTests {
 
         NodeTree other = NodeTreeFactory.load(decorated);
 
-        assertThat(other.nodeContentVersion()).isEqualTo(tree.nodeContentVersion());
         assertThat(other.content().stats()).isEqualTo(tree.content().stats());
         assertThat(other.content().nodes()).isEqualTo(tree.content().nodes());
     }
