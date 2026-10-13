@@ -164,7 +164,7 @@ public class BattleContentLoader {
     private static void validate(BattleContent content, List<ContentDiagnostic> into) {
         // 규칙을 하나씩 여기에 추가
         verifyEnemies(content.enemies(), into);
-//        verifyGrowth(content.growth(), into);
+        verifyGrowth(content.growth(), into);
 //        verifyStartSupply(content, into);
     }
 
@@ -245,10 +245,17 @@ public class BattleContentLoader {
                 }
             }
 
+            // 규칙 5) golden 성질과 golden 수치는 짝이다
+            // (적마다 보는 규칙이라 적 목록을 도는 반복문 안에 있다)
+
+            // 이 종류의 traits에 golden 성질이 있는지 (소행성만 true)
             boolean hasGoldenTrait = enemy.traits().contains(EnemyKindDefinition.GOLDEN);
+
+            // 성질은 있는데 수치(multiplier 등)가 없으면 황금 적의 Gold를 계산할 수 없다
             if (hasGoldenTrait && enemy.golden() == null) {
                 into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].golden",
                         "성질이 있으면 수치가 있어야 한다."));
+                // 성질이 없는데 수치만 있으면 쓰이지 않는 수치가 남은 것이므로 JSON이 잘못된 것이다
             } else if (!hasGoldenTrait && enemy.golden() != null) {
                 into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].golden",
                         "성질이 없으면 수치는 null이어야 한다."));
@@ -256,7 +263,61 @@ public class BattleContentLoader {
         }
     }
 
-//    private static void verifyGrowth()
+    /**
+     * 성장(growth)에 대한 규칙을 검사한다.
+     * 지금은 규칙 6(levelExp)만 있고, 규칙 7(이정표)이 이어서 추가된다.
+     *
+     * @param growth Level 사다리(levelExp)와 이정표(milestones)
+     * @param into   어긴 곳을 모으는 목록(바로 던지지 않는다)
+     */
+    private static void verifyGrowth(HqGrowthDefinition growth, List<ContentDiagnostic> into) {
+        // 규칙 6) levelExp가 양수이고 증가한다
+        List<Long> levelExp = growth.levelExp(); // Level별 누적 EXP. levelExp[i]는 Level i + 1에 닿는 값
+        long previousExp = 0; // 앞 Level의 값. 첫 값은 0과 비교해서 "양수"인지도 함께 본다
+
+        for (int i = 0; i < levelExp.size(); i++) {
+            // Long(객체)을 long(기본형)으로 꺼내 값으로 비교한다
+            long exp = levelExp.get(i);
+            // 앞 값보다 커야 한다. 같아도 오류이고, 첫 값이 0 이하여도 걸린다
+            if (exp <= previousExp) {
+                into.add(new ContentDiagnostic("growth.levelExp[" + i + "]",
+                        "앞 Level보다 커야 한다."));
+            }
+            // 오류가 나도 이번 값으로 갱신한다. 그래야 다음 값이 이번 값과 따로 비교되어 문제가 연쇄로 부풀지 않는다
+            previousExp = exp;
+        }
+
+        // 규칙 7) 이정표 Level·targetGold가 증가하고, Level은 사다리 안이다
+        List<HqMilestone> milestones = growth.milestones(); // 이정표 목록(Level이 커지는 순서)
+        int previousLevel = 0;  // 앞 이정표의 Level. 첫 이정표는 0과 비교해서 1 이상인지도 함께 본다
+        long previousGold = 0;  // 앞 이정표의 목표 Gold. 첫 이정표는 0과 비교한다
+
+        for (int i = 0; i < milestones.size(); i++) {
+            HqMilestone milestone = milestones.get(i);
+
+            // Level은 앞 이정표보다 커야 한다. 같아도 오류이고, 첫 값이 0 이하여도 걸린다
+            if (milestone.level() <= previousLevel) {
+                into.add(new ContentDiagnostic("growth.milestones[" + i + "].level",
+                        "앞 이정표보다 커야 한다."));
+            }
+            // 오류가 나도 이번 값으로 갱신한다. 그래야 다음 값이 이번 값과 따로 비교되어 문제가 연쇄로 부풀지 않는다
+            previousLevel = milestone.level();
+
+            // Level 사다리의 끝(levelExp의 개수)을 넘으면 그 Level에 닿는 EXP가 정의되어 있지 않다.
+            // 위의 증가 검사와는 별개의 오류라서 else 없이 따로 검사한다(둘 다 어길 수 있다)
+            if (milestone.level() > growth.maxLevel()) {
+                into.add(new ContentDiagnostic("growth.milestones[" + i + "].level",
+                        "Level이 사다리 밖이다."));
+            }
+
+            // 목표 Gold도 앞 이정표보다 커야 한다. 첫 값은 0과 비교해서 양수인지 본다
+            if (milestone.targetGold() <= previousGold) {
+                into.add(new ContentDiagnostic("growth.milestones[" + i + "].targetGold",
+                        "앞 이정표보다 커야 한다."));
+            }
+            previousGold = milestone.targetGold();
+        }
+    }
 
     /**
      * battle.json의 글자를 BattleContent로 만든다.

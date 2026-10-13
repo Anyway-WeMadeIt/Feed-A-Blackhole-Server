@@ -153,4 +153,74 @@ class BattleContentLoaderTests {
                 .hasMessageContaining("enemies[asteroid].golden")
                 .hasMessageContaining("null이어야");
     }
+
+    /**
+     * levelExp가 앞 Level보다 커지지 않으면 알리는지 확인한다(규칙 6).
+     */
+    @Test
+    void levelExpMustIncrease() throws IOException {
+        // 두 번째 값(350)을 첫 번째 값(80)과 같게 바꾼다. 이 문자열은 샘플에 한 번만 나온다
+        String broken = read().replace("      350,\n", "      80,\n");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("growth.levelExp[1]")
+                .hasMessageContaining("앞 Level보다 커야");
+    }
+
+    /**
+     * levelExp의 첫 값이 0 이하이면 알리는지 확인한다(규칙 6, 양수 조건).
+     */
+    @Test
+    void levelExpMustBePositive() throws IOException {
+        // 첫 번째 값(80)을 0으로 바꾼다. 이 문자열도 샘플에 한 번만 나온다
+        String broken = read().replace("      80,\n", "      0,\n");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("growth.levelExp[0]")
+                .hasMessageContaining("앞 Level보다 커야");
+    }
+
+    /**
+     * 이정표 Level이 Level 사다리 밖이면 알리는지 확인한다(규칙 7).
+     */
+    @Test
+    void milestoneLevelMustBeInsideTheLadder() throws IOException {
+        // 세 번째 이정표의 Level(30)을 사다리(42단계)보다 큰 43으로 바꾼다. 이 문자열은 샘플에 한 번만 나온다
+        String broken = read().replace("\"level\": 30,", "\"level\": 43,");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("growth.milestones[2].level")
+                .hasMessageContaining("사다리");
+    }
+
+    /**
+     * 이정표 Level이 앞 이정표보다 커지지 않으면 알리는지 확인한다(규칙 7).
+     */
+    @Test
+    void milestoneLevelMustIncrease() throws IOException {
+        // 세 번째 이정표의 Level(30)을 두 번째와 같은 20으로 바꾼다
+        String broken = read().replace("\"level\": 30,", "\"level\": 20,");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("growth.milestones[2].level")
+                .hasMessageContaining("앞 이정표보다 커야");
+    }
+
+    /**
+     * 이정표 목표 Gold가 앞 이정표보다 커지지 않으면 알리는지 확인한다(규칙 7).
+     */
+    @Test
+    void milestoneTargetGoldMustIncrease() throws IOException {
+        // 두 번째 이정표의 targetGold(5600000)를 첫 번째와 같은 690000으로 바꾼다
+        String broken = read().replace("\"targetGold\": 5600000", "\"targetGold\": 690000");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("growth.milestones[1].targetGold")
+                .hasMessageContaining("앞 이정표보다 커야");
+    }
 }
