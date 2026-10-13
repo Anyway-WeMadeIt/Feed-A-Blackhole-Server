@@ -244,6 +244,15 @@ public class BattleContentLoader {
                             "0 이상이어야 한다."));
                 }
             }
+
+            boolean hasGoldenTrait = enemy.traits().contains(EnemyKindDefinition.GOLDEN);
+            if (hasGoldenTrait && enemy.golden() == null) {
+                into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].golden",
+                        "성질이 있으면 수치가 있어야 한다."));
+            } else if (!hasGoldenTrait && enemy.golden() != null) {
+                into.add(new ContentDiagnostic("enemies[" + enemy.enemyId() + "].golden",
+                        "성질이 없으면 수치는 null이어야 한다."));
+            }
         }
     }
 

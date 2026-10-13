@@ -121,4 +121,36 @@ class BattleContentLoaderTests {
                 .hasMessageContaining("enemies[asteroid].tiers[1].gold")
                 .hasMessageContaining("0 이상");
     }
+
+    /**
+     * traits에 golden이 있는데 golden 수치가 없으면 알리는지 확인한다(규칙 5).
+     */
+    @Test
+    void goldenTraitWithoutGoldenValuesIsRejected() throws IOException {
+        // 행성(planet)의 traits에 golden을 더한다. 행성의 golden은 null이라 수치가 없다
+        String broken = read().replace(
+                "        \"moon\"\n      ],\n      \"golden\": null,",
+                "        \"moon\",\n        \"golden\"\n      ],\n      \"golden\": null,");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("enemies[planet].golden")
+                .hasMessageContaining("있어야");
+    }
+
+    /**
+     * golden 수치가 있는데 traits에 golden이 없으면 알리는지 확인한다(규칙 5).
+     */
+    @Test
+    void goldenValuesWithoutGoldenTraitIsRejected() throws IOException {
+        // 소행성(asteroid)의 traits에서 golden을 뺀다. golden 수치는 그대로 남는다
+        String broken = read().replace(
+                "        \"golden\",\n        \"electric\"\n",
+                "        \"electric\"\n");
+
+        assertThatThrownBy(() -> BattleContentLoader.load(broken))
+                .isInstanceOf(ContentLoadException.class)
+                .hasMessageContaining("enemies[asteroid].golden")
+                .hasMessageContaining("null이어야");
+    }
 }
