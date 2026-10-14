@@ -1240,9 +1240,9 @@ public enum SyncCallOutcome
 | 동기화 DTO(5.4), `LogTypes`·`RejectCodes`·`SyncLimits` | `Assets/Scripts/Net/SyncDtos.cs`, `SyncCodes.cs` | 완료 |
 | `SyncJson`(5.5) | `Assets/Scripts/Net/SyncJson.cs` | **구현 완료** |
 | `PendingLog`, `ISyncStore`, `SyncApplyOutcome`, `ISyncApi`, `SyncCallResult`(5.6) | `Assets/Scripts/Net/` | 완료(구현 없음) |
-| `KillBucket`, `KillBucketCount`(5.3) | `Assets/Scripts/Core/Enemies/KillBucket.cs` | 타입 완료. 세는 일과 `BattleRawData` 속성은 W3-1(**구현 완료**, PR 대기. 검증은 `Editor/SyncFixtures/KillLedgerCheck`) |
+| `KillBucket`, `KillBucketCount`(5.3) | `Assets/Scripts/Core/Enemies/KillBucket.cs` | 타입 완료. 세는 일과 `BattleRawData` 속성은 W3-1(**완료**, PR #88. 검증은 `Editor/SyncFixtures/KillLedgerCheck`) |
 | `RunStartInfo`(5.3) | `Assets/Scripts/Core/Battle/Session/RunStartInfo.cs` | **완료**. `GameSession.StartInfo`를 연결했다(W3-2) |
-| `BlackHole.Sync` 어셈블리, `SyncLogFactory` | `Assets/Scripts/Sync/` | **완료**. 4종 로그(구매, 새 게임, 판 시작, 결산)를 만들고 `ScreenFlow`의 4지점에서 남긴다(W3-2). 결산의 칸별 값은 W3-1이 채운다(구현 완료, PR 대기) |
+| `BlackHole.Sync` 어셈블리, `SyncLogFactory` | `Assets/Scripts/Sync/` | **완료**. 4종 로그(구매, 새 게임, 판 시작, 결산)를 만들고 `ScreenFlow`의 4지점에서 남긴다(W3-2). 결산의 칸별 값은 W3-1이 채운다(완료) |
 | `SyncLedger`, `ServerProgress`(5.7) | `Assets/Scripts/Sync/` | **완료**(W3-3). 로그 장부와 응답 반영 규칙, 서버 진행도 비교 |
 | `ProgressStore`(`ISyncStore` 구현), `ProgressSaveFile`, 저장 포맷 2(5.10) | `Assets/Scripts/Save/`(`BlackHole.Save`), `Core/Nodes/Save/SyncSaveData.cs` | **완료**(W3-3) |
 | 동기화 샘플(3.8) | `Assets/Tests/Net/SyncSamples/` | 서버와 같은 파일 |
