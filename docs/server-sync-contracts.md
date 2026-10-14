@@ -277,7 +277,7 @@ public interface KindSetup {
 | 제한 시간 | `Duration + gainOf(timer)` (float) | 같음 |
 | 성장 공급·시작 공급 | `GameSessionFactory.StartSupplyOf` | 같은 순서(콘텐츠 시작 공급 → 보너스 → 변환 사슬 위상 정렬) |
 
-- 일치 여부는 C#이 생성한 기대값 표(W4-1a)로 확인한다. 이 표가 이 장의 실행 가능한 기준이다.
+- 일치 여부는 C#이 생성한 기대값 표(W4-1a, 에디터 도구 `Editor/SyncFixtures`)로 확인한다. 이 표가 이 장의 실행 가능한 기준이다. 표는 콘텐츠 버전에 묶여 있어 `contentVersion`을 함께 담고, 서버 콘텐츠 버전과 다르면 다시 만들어야 한다.
 
 ### 1.8 결정 사항 (1장, 확정)
 
@@ -1002,7 +1002,7 @@ public enum SuspicionReason {
 | `BlackHole.Sync` (신규) | 없음 | `SyncLogFactory`: 코어 객체(진행도, 판, 결산 결과)로 로그 JSON을 만든다. `BlackHole.Core.*`와 `BlackHole.Net`을 참조 | A |
 | Assembly-CSharp | 있음 | `ISyncStore` 구현(진행 저장과 함께, `Save/`), `SyncSender`, 연결 코드, 알림 UI | A(저장), C(전송·UI) |
 
-- `SyncLogFactory`를 Unity 밖에 두는 이유: `Tools/Simulation`(net8.0)이 캠페인 전체 로그를 만들 때(W4-2a) 같은 코드를 쓴다. 그때 `IJsonSerializer`는 `System.Text.Json`(`IncludeFields = true`)으로 구현한다.
+- `SyncLogFactory`를 Unity 밖에 두는 이유: Editor 테스트 어셈블리가 직접 참조해 검증하고(샘플과 글자 단위 비교), 에디터 도구(W4-2a)가 캠페인 전체 로그를 만들 때 같은 코드를 쓰기 위해서다. 에디터 도구의 `IJsonSerializer`는 `UnityJsonSerializer`다. (원래는 net8.0 시뮬레이션 도구도 쓰도록 이렇게 나눴으나, 그 도구는 2026-10-14 `dev`에서 삭제되었다.)
 
 ### 5.3 코어에 더할 것
 
@@ -1213,7 +1213,7 @@ public enum SyncCallOutcome
 
 | # | 결정 | 이유 |
 |---|---|---|
-| C23 | 로그 생성기(`SyncLogFactory`)는 Unity 밖의 새 어셈블리 `BlackHole.Sync`에 둔다 | 시뮬레이션 도구(net8.0)가 같은 코드로 캠페인 로그를 만든다(W4-2a) |
+| C23 | 로그 생성기(`SyncLogFactory`)는 Unity 밖의 새 어셈블리 `BlackHole.Sync`에 둔다 | Editor 테스트가 직접 검증하고, 에디터 도구가 같은 코드로 캠페인 로그를 만든다(W4-2a). 시뮬레이션 도구(net8.0)는 삭제되었다 |
 | C24 | 진행도와 대기 로그를 `progress.json` 한 파일에 함께 저장한다(포맷 2) | 한 번의 원자적 쓰기로 둘이 어긋나지 않는다 |
 | C25 | 거부가 없으면 남은 로그가 있는 동안 서버 진행도로 덮어쓰지 않는다 | 응답을 기다리는 동안 생긴 로그의 효과를 잃지 않는다 |
 | C26 | 전송은 동시에 하나만, 나눈 요청은 앞 응답을 반영한 뒤 다음을 보낸다 | seq 순서와 거부 후 멈춤을 단순하게 보장한다 |
