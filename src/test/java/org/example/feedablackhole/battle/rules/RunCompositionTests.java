@@ -6,11 +6,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.util.HashMap;
 import java.util.Map;
 import org.example.feedablackhole.battle.content.BattleContent;
 import org.example.feedablackhole.battle.content.ContentBundle;
 import org.example.feedablackhole.battle.content.ContentBundleLoader;
+import org.example.feedablackhole.battle.content.EnemyKindDefinition;
 import org.example.feedablackhole.battle.content.HqMilestone;
+import org.example.feedablackhole.node.content.NodeDefinition;
 import org.example.feedablackhole.node.content.NodeTree;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -88,6 +91,7 @@ class RunCompositionTests {
             throw new UncheckedIOException(e);
         }
     }
+
     // 노드를 사지 않은 성장도 0: 제한 시간 12초, 성장 시간 0, 처치 시간 보너스 0.3초
     @Test
     void timesWithoutNodes() {
@@ -134,6 +138,86 @@ class RunCompositionTests {
         assertThatThrownBy(() -> RunComposition.of(battle, 0, new FixedGains(Map.of("growth.time", -1f))))
                 .isInstanceOf(IllegalArgumentException.class);
 
-        assertThat(RunComposition.of(battle, 0, new FixedGains(Map.of())).growthTimeSeconds()).isZero();
+        // 노드를 사지 않으면 성장 시간은 0이고, 0은 허용된다
+        assertThat(setup(0).growthTimeSeconds()).isZero();
+    }
+
+    // 성장도 0: 임계값에서 Level이 오르고(같으면 오른다), 목표(Level 10)에서 멈춘다
+    @Test
+    void levelRisesAtEachThresholdAndStopsAtTheGoal() {
+        RunComposition run = setup(0);
+
+        assertThat(run.levelForExp(0)).isZero();
+        assertThat(run.levelForExp(79)).isZero();          // Level 1 임계값(80) 직전
+        assertThat(run.levelForExp(80)).isEqualTo(1);      // 임계값과 같으면 오른다
+        assertThat(run.levelForExp(349)).isEqualTo(1);     // Level 2 임계값(350) 직전
+        assertThat(run.levelForExp(350)).isEqualTo(2);
+        assertThat(run.levelForExp(Long.MAX_VALUE)).isEqualTo(10); // 목표 Level 10을 넘지 않는다
+    }
+
+    // 성장도 1: 시작 EXP부터 세고, 목표(Level 20)에서 멈춘다. 시작 EXP보다 작아도 시작 Level이다
+    @Test
+    void laterStagesCountFromTheirStartExp() {
+        RunComposition run = setup(1);
+
+        assertThat(run.levelForExp(0)).isEqualTo(10);          // 시작 EXP(250,000)보다 작아도 오류가 아니다
+        assertThat(run.levelForExp(250_000)).isEqualTo(10);
+        assertThat(run.levelForExp(289_999)).isEqualTo(10);    // Level 11 임계값(290,000) 직전
+        assertThat(run.levelForExp(290_000)).isEqualTo(11);
+        assertThat(run.levelForExp(Long.MAX_VALUE)).isEqualTo(20);
+    }
+
+    // 마지막 성장도(목표 없음): Level 사다리의 끝(Level 42)에서 멈춘다
+    @Test
+    void withoutAGoalTheLevelStopsAtTheEndOfTheLadder() {
+        RunComposition run = setup(4);
+
+        assertThat(run.levelForExp(1_050_000_000_000L - 1)).isEqualTo(41); // Level 42 임계값 직전
+        assertThat(run.levelForExp(1_050_000_000_000L)).isEqualTo(42);
+        assertThat(run.levelForExp(Long.MAX_VALUE)).isEqualTo(42);
+    }
+
+    // 판 설정은 모든 적 종류의 구성을 이름으로 꺼내 준다
+    @Test
+    void everyKindCanBeFoundByName() {
+        RunComposition run = setup(0);
+
+        for (EnemyKindDefinition kind : battle.enemies()) {
+            assertThat(run.kind(kind.enemyId()).enemyId()).isEqualTo(kind.enemyId());
+            assertThat(run.findKind(kind.enemyId())).isPresent();
+        }
+        assertThat(run.kind("asteroid").maxSize()).isEqualTo(1);
+    }
+
+    // 없는 종류: findKind는 비어 있고, kind는 IllegalArgumentException
+    @Test
+    void unknownKindIsRejected() {
+        RunComposition run = setup(0);
+
+        assertThat(run.findKind("nebula")).isEmpty();
+        assertThatThrownBy(() -> run.kind("nebula")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // 산 노드가 종류의 구성에 반영된다(소행성 크기 노드 2개 → 최대 크기 3)
+    @Test
+    void boughtNodesReachTheKindSetup() {
+        RunComposition run = RunComposition.of(battle, 0,
+                NodeUpgradeValues.of(tree, Map.of("asteroid.size-01", 1, "asteroid.size-02", 1)));
+
+        assertThat(run.kind("asteroid").maxSize()).isEqualTo(3);
+    }
+
+    // 모든 노드를 마지막 Rank까지 사도, 어느 성장도에서나 판 설정이 만들어진다(클라이언트 UpgradeContentCheck와 같은 확인)
+    @Test
+    void everyStageCanBeComposedWhenEveryNodeIsBought() {
+        Map<String, Integer> everything = new HashMap<>();
+        for (NodeDefinition node : tree.nodes()) {
+            everything.put(node.id(), node.maxRank());
+        }
+
+        for (int stage = 0; stage <= battle.growth().maxStage(); stage++) {
+            RunComposition run = RunComposition.of(battle, stage, NodeUpgradeValues.of(tree, everything));
+            assertThat(run.timeLimitSeconds()).as("성장도 %d", stage).isPositive();
+        }
     }
 }
