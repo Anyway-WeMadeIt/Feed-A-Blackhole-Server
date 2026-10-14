@@ -50,6 +50,8 @@ public final class RunComposition implements RunSetup {
 
     // 적 종류 이름(enemyId) -> 이 판에서의 종류 구성. 종류 순서(battle.json의 enemies 순서)를 지킨다
     private final Map<String, KindComposition> kinds;
+
+    // 이 판의 시작 공급(시작 수 + 보너스 -> 변환 반영, 처음 나온 종류 순서, 0마리 종류 제외). 만들 때 한 번 계산한다
     private final List<SupplyEntry> startSupply;
 
     private RunComposition(HqGrowthDefinition growth, int growthStage, int startLevel, int goalLevel, long startExp,
@@ -107,6 +109,7 @@ public final class RunComposition implements RunSetup {
             kinds.put(definition.enemyId(), KindComposition.from(definition, upgrades));
         }
 
+        // 종류 구성이 모두 만들어진 뒤에 계산한다. 시작 수 보너스와 변환 수가 종류 구성에 들어 있기 때문이다
         List<SupplyEntry> startSupply = StartSupply.of(content, kinds);
 
         return new RunComposition(growth, growthStage, startLevel, goalLevel, startExp, nextMilestone,
@@ -153,6 +156,7 @@ public final class RunComposition implements RunSetup {
         return killTimeBonusSeconds;
     }
 
+    // 만들 때 계산해 둔 시작 공급을 그대로 돌려준다
     @Override
     public List<SupplyEntry> startSupply() {
         return startSupply;
@@ -169,7 +173,7 @@ public final class RunComposition implements RunSetup {
     public KindSetup kind(String enemyId) {
         Optional<KindSetup> found = findKind(enemyId);
         if (found.isEmpty()) {
-            throw new IllegalArgumentException("없는 종류다:" + enemyId);
+            throw new IllegalArgumentException("없는 종류다: " + enemyId);
         }
 
         return found.get();
