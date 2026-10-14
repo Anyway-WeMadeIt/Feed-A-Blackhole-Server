@@ -42,6 +42,7 @@
 - **2026-10-14 변경(2)**: W2-3(연결 상태와 타이틀)을 C에서 A로 옮겨 완료했다. A 합계 16.5일 → 17.5일, C 합계 16.5일 → 15.5일이다. 위 일정 그림의 C 행 W2-3은 그대로 두었다(완료 표시만 이 문서의 작업 상세를 따른다).
 - **2026-10-14 변경(3)**: A의 W3-2(로그 모델과 생성기), W3-3(저장 포맷 2)이 클라이언트 `dev`에 병합되어 **완료**다(PR #79, 병합 `6a0a42f`). 클라이언트 작업이라 문서 반영이 늦었다. 칸별 처치 집계(W3-1)는 아직이어서, 결산 로그의 `kills`는 그 전까지 비어 있다(작업 상세 W3-2). 이로써 C의 W3-4는 선행(W2-3, W3-2, W3-3)이 모두 풀렸다.
 - **2026-10-14 변경(4)**: B의 W1-4(전투 규칙 이식)가 서버 `dev`에 병합되어 **완료**다(PR #20, 병합 `a171e1a`). B의 W1-5와 A의 W1-6은 실제 규칙으로 통합할 수 있고, W4-1b는 C의 W4-1a(기대값 표)만 남았다.
+- **2026-10-14 변경(5)**: C의 W3-1(칸별 처치 집계)이 구현을 마쳤다(클라이언트 `feat/BattleResultRequest-clean`, PR 대기). 결산 로그의 `kills`·`goldenCritCount`·`goldenCritBonusGold`·`timeBonusCount`가 실제 값으로 채워진다. 병합되면 W4-2a의 선행(W3-0, W3-1, W3-2)이 모두 풀린다.
 
 ## 3. 일정 개요
 
@@ -117,7 +118,7 @@ C  ▕ W2-1 ▏ W2-2 ▏ W2-3 ▏ W3-1 ▏ W0-2 ▏ W3-4 ▏ W3-5 ▏ W4-1a ▏ 
 - **결정·참고**:
   - **포기**는 로그가 없다(계획서 D5: 다음 `RUN_START`나 `RESET`이 열린 판을 포기로 닫는다).
   - **판 시작 로그 없이 시작한 판**(테스트 도구)의 결산은 서버가 `RUN_NOT_OPEN`으로 거부하므로, 그 실행을 테스트 세션으로 보고 저장·로그를 모두 멈춘다(`EnterTestSession`).
-  - **남은 일**: `BattleRawData`에 `KillBuckets`·`GoldenCritCount`·`GoldenCritBonusGold`·`TimeBonusCount` 속성은 있으나 값은 W3-1이 센다. 그 전까지 결산 로그의 `kills`는 빈 배열이고 `goldenCritCount` 등은 0이라, 서버의 결산 검증을 통과하지 못한다. W3-1이 끝나야 실제 동기화가 동작한다.
+  - **칸별 값**: `BattleRawData`의 `KillBuckets`·`GoldenCritCount`·`GoldenCritBonusGold`·`TimeBonusCount`는 W3-1이 센다(구현 완료, PR 대기). 병합 전 `dev`에서는 결산 로그의 `kills`가 빈 배열이고 `goldenCritCount` 등이 0이라 서버의 결산 검증을 통과하지 못한다.
 
 #### W3-3. 저장 포맷 2 (클라이언트, 2.5일) — 완료
 
@@ -284,12 +285,19 @@ C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서
 - **알려진 한계**: `NearestEnemyBot`은 성장도 3(Lv30)에 약 300판에 닿지만, 이후 모든 노드를 사고도 Lv38에서 멈춰 마지막 이정표(Lv40)에 닿지 못한다. 자세한 영향은 W4-2a.
 - **선행**: 없음.
 
-#### W3-1. 칸별 처치 집계 (M, 2.5일)
+#### W3-1. 칸별 처치 집계 (M, 2.5일) — 구현 완료(PR 대기)
 
 - **목표**: 코어 처치 집계를 (종류, 색 등급, 크기, 황금 여부) 칸별로 확장한다. 황금 치명 횟수·보너스 골드, 시간 추가 성공 수를 따로 센다. `BattleRawData`에서 읽을 수 있게 한다.
 - **참조**: `Core/Enemies/EnemyRoster.cs`, `DeathRewards.cs`, `Core/Battle/World/DeathBonuses.cs`, `World.cs`, `Session/BattleRawData.cs`. 시그니처는 계약 5장.
 - **완료 조건**: W3-0의 판 실행기(`HeadlessBattle.Run`)로 돌린 판에서 Σ(칸 처치 수 × 칸 경험치) + 시작 경험치 == `Hq.Exp`, Σ(칸 처치 수 × 칸 골드) + 치명 보너스 == `EarnedGold`인지 확인한다. 판 실행기는 에디터 전용이라 NUnit 테스트가 참조할 수 없으므로, `Editor/SyncFixtures`의 스모크 실행에 이 검사를 추가하는 방식으로 한다(결과의 `Raw`에서 칸별 장부를 읽는다).
 - **선행**: 계약 5장의 `KillBucket` 시그니처, W3-0.
+- **결과**(클라이언트 `feat/BattleResultRequest-clean`):
+  - `EnemyRoster`가 사망 확정 순간(`RecordDeath`)에 칸별 처치 수(처음 처치한 순서)와 황금 치명 횟수·보너스 Gold를 센다. 보너스는 `KillGold`와 같은 보상 값(`DeathReward`)에서 읽어 `EarnedGold`와 어긋날 수 없다. 칸의 황금 여부와 황금 치명 판정은 같은 함수(`DeathRewards.TryGetGolden`)를 쓴다.
+  - `DeathBonuses.Roll`이 시간 추가 성공 수를 센다(수거형, 쿨타임으로 건너뛴 판정은 세지 않는다).
+  - `World` → `GameSession.CreateRawData` → `BattleRawData`(생성자 인자, 모두 읽기 전용)로 넘긴다. `SyncLogFactory`가 이미 이 속성을 읽으므로 실제 게임의 결산 로그에 바로 실린다.
+  - 판이 끝난 뒤 치운 적(`ClearRemainingEnemies`)은 세지 않는다(기존 처치 수와 같다).
+- **검증**: `Editor/SyncFixtures/KillLedgerCheck`가 판마다 서버 결산 검증과 같은 식을 확인한다: S3(`시작 EXP + Σ(칸 수 × 칸 EXP) == Hq.Exp`), S6(`Σ(칸 수 × 칸 Gold) + GoldenCritBonusGold == EarnedGold`), `Σ칸 수 == TotalKills`, 칸 중복 없음, S5(`GoldenCritCount ≤ 황금 처치 수`), S7(`TimeBonusCount ≤ 수거형이 아닌 처치 수`). 칸의 Gold·EXP는 그 판의 수치 표(`World.Stats`)에서 읽는다. `HeadlessBattle.Run`이 결과의 `LedgerProblem`에 담고, 스모크·캠페인 보고서가 어긋난 판을 적고 `처치 장부(W3-1)` 줄로 요약한다.
+- **확인 결과**(2026-10-14, 콘텐츠 `305af9bb49363c7e`): 메뉴 `Campaign Run`으로 600판(성장도 3에서 막힘으로 멈춤) 모두 맞았다. 판당 평균 칸 17.2개, 황금 치명 합 3,173번, 시간 추가 합 12,303번. 재현성 검사도 칸 수·치명 보너스·시간 추가 수까지 같다. Editor 테스트 104개 통과(`SyncLogFactoryTests`를 새 생성자에 맞췄다).
 
 #### W0-2. 릴리즈 빌드 콘텐츠 버전 (S, 1일) — 완료(A가 진행)
 
@@ -328,7 +336,7 @@ C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서
   - **소요 시간은 문제가 아니다**(W3-0 측정): 성장도 3까지 약 300판에 25초, 500판에 56초(평균 113ms). 판 상한이나 구간 축소는 필요 없다.
   - **제약(W3-0 측정, 2026-10-14)**: `NearestEnemyBot`은 성장도 3(Lv30)에 약 300판에 닿는다. 그 뒤에는 모든 노드를 사고도 Lv38에서 멈춰 마지막 이정표(Lv40, 성장도 4)에 닿지 못한다. 계속 돌리면 Gold가 쌓여 `long` 상한(약 9.2×10¹⁸)을 넘어 오버플로가 난다(판 996). 그래서 "클리어까지"를 전제로 하지 않고, **이정표 없이 N판이면 멈추는 규칙**(스모크 도구에 있다)으로 끝낸다.
   - **선택지**: (a) 골든 로그를 성장도 3까지로 한정한다(기본). 마지막 이정표 이후의 서버 분기(다음 이정표 없음, 목표 Level 0)는 골든 로그로 검증하지 못하므로 W1-6의 단위 테스트가 맡는다. (b) 봇을 강화해 마지막 이정표까지 보낸다. 삭제된 `GreedyAimBot`(479줄) 전체를 되살리지 않고 필요한 만큼만 개선한다. (c) `BattleCheats`로 EXP를 더하는 방법은 쓸 수 없다. 더한 EXP가 처치 장부에 없어 서버의 S3(EXP 일치) 검사와 어긋난다.
-- **선행**: W3-0(완료), W3-1, W3-2.
+- **선행**: W3-0(완료), W3-1(구현 완료, PR 대기), W3-2(완료).
 
 #### W5-1. battle-summary 정리 (S, 1일)
 
