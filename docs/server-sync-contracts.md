@@ -1001,8 +1001,9 @@ public enum SuspicionReason {
 | 어셈블리 | Unity 의존 | 내용 | 담당 |
 |---|---|---|---|
 | `BlackHole.Net` (2장) | 없음 | 동기화 DTO(5.4), `SyncJson`(5.5), `ISyncApi`, `ISyncStore`, `PendingLog` 등(5.6) | A(타입), C(`ISyncApi` 구현) |
-| `BlackHole.Sync` (신규) | 없음 | `SyncLogFactory`: 코어 객체(진행도, 판, 결산 결과)로 로그 JSON을 만든다. `BlackHole.Core.*`와 `BlackHole.Net`을 참조 | A |
-| Assembly-CSharp | 있음 | `ISyncStore` 구현(진행 저장과 함께, `Save/`), `SyncSender`, 연결 코드, 알림 UI | A(저장), C(전송·UI) |
+| `BlackHole.Sync` (신규) | 없음 | `SyncLogFactory`: 코어 객체(진행도, 판, 결산 결과)로 로그 JSON을 만든다. `SyncLedger`: 로그 장부와 응답 반영 규칙(5.7). `ServerProgress`: 서버 진행도 비교·변환. `BlackHole.Core.*`와 `BlackHole.Net`을 참조 | A |
+| `BlackHole.Save` (신규) | 있음 | `ProgressStore`(`ISyncStore` 구현, 진행 저장과 함께), `ProgressSaveFile`. 원래 Assembly-CSharp에 있던 `Save/`를 분리했다 | A |
+| Assembly-CSharp | 있음 | `SyncSender`, 연결 코드, 알림 UI | C |
 
 - `SyncLogFactory`를 Unity 밖에 두는 이유: Editor 테스트 어셈블리가 직접 참조해 검증하고(샘플과 글자 단위 비교), 에디터 도구(W4-2a)가 캠페인 전체 로그를 만들 때 같은 코드를 쓰기 위해서다. 에디터 도구의 `IJsonSerializer`는 `UnityJsonSerializer`다. (원래는 net8.0 시뮬레이션 도구도 쓰도록 이렇게 나눴으나, 그 도구는 2026-10-14 `dev`에서 삭제되었다.)
 
@@ -1200,6 +1201,10 @@ public enum SyncCallOutcome
 - 포맷 1 파일을 읽으면 `Sync`는 처음 상태(`NextSeq` 1, 로그 없음)다.
 - 로그 하나를 쌓는 것은 "진행도 반영 + 로그 추가 + 저장"을 한 번에 한다. 진행도만 저장되고 로그가 빠지는 일이 없다.
 - 테스트 세션(테스트 도구가 진행도를 바꾼 실행)은 지금처럼 저장하지 않고, 로그도 만들지 않는다.
+- **구현(W3-3, 완료)**: 위 쓰기는 `ProgressStore.Commit(makeLog)`(새 게임은 `StartNew(progress, makeLog)`)이다. `makeLog`는 장부가 정한 seq를 받아 `PendingLog`를 만들어 돌려주며, seq가 다르면 예외다. `LogAppended`는 저장한 뒤에 올린다. 응답 반영(`ApplyResponse`)과 거부 확인(`MarkLastRejectionShown`)도 응답마다 파일에 쓴다 — 새 게임·계속을 고르기 전(타이틀)에도 쓰되, 이때는 불러온 저장의 진행도에 장부만 바꿔 쓴다.
+- `LastRejection.AtUtc`는 저장 파일에만 있고(`RejectedLogDto`에는 없다) 거부를 받은 시각이다.
+- 포맷 버전이 모르는 값이거나 `Sync`의 seq 순서가 어긋나면 깨진 저장으로 보고 보관(`.bak`)한 뒤 직전 저장(`.prev`)을 쓴다. 쓰기 도중 실패하면 본 파일은 그대로고 장부는 메모리에 남아 다음 저장 때 다시 쓴다.
+- **판 시작 로그 없이 시작한 판**(테스트 도구)의 결산은 서버가 `RUN_NOT_OPEN`으로 거부하므로 테스트 세션으로 전환한다. **포기**는 로그를 만들지 않는다.
 
 ### 5.11 수치와 문구
 
@@ -1231,9 +1236,13 @@ public enum SyncCallOutcome
 | `SyncJson`(5.5) | `Assets/Scripts/Net/SyncJson.cs` | **구현 완료** |
 | `PendingLog`, `ISyncStore`, `SyncApplyOutcome`, `ISyncApi`, `SyncCallResult`(5.6) | `Assets/Scripts/Net/` | 완료(구현 없음) |
 | `KillBucket`, `KillBucketCount`(5.3) | `Assets/Scripts/Core/Enemies/KillBucket.cs` | 타입 완료. 세는 일과 `BattleRawData` 속성은 W3-1 |
-| `RunStartInfo`(5.3) | `Assets/Scripts/Core/Battle/Session/RunStartInfo.cs` | 타입 완료. `GameSession.StartInfo` 연결은 W3-2 |
-| `BlackHole.Sync` 어셈블리, `SyncLogFactory` | `Assets/Scripts/Sync/` | 구매·새 게임 로그 완료, 판 시작·결산은 W3-2 |
+| `RunStartInfo`(5.3) | `Assets/Scripts/Core/Battle/Session/RunStartInfo.cs` | **완료**. `GameSession.StartInfo`를 연결했다(W3-2) |
+| `BlackHole.Sync` 어셈블리, `SyncLogFactory` | `Assets/Scripts/Sync/` | **완료**. 4종 로그(구매, 새 게임, 판 시작, 결산)를 만들고 `ScreenFlow`의 4지점에서 남긴다(W3-2). 결산의 칸별 값은 W3-1이 채운다 |
+| `SyncLedger`, `ServerProgress`(5.7) | `Assets/Scripts/Sync/` | **완료**(W3-3). 로그 장부와 응답 반영 규칙, 서버 진행도 비교 |
+| `ProgressStore`(`ISyncStore` 구현), `ProgressSaveFile`, 저장 포맷 2(5.10) | `Assets/Scripts/Save/`(`BlackHole.Save`), `Core/Nodes/Save/SyncSaveData.cs` | **완료**(W3-3) |
 | 동기화 샘플(3.8) | `Assets/Tests/Net/SyncSamples/` | 서버와 같은 파일 |
 | 테스트 | `Assets/Tests/Net/SyncJsonTests.cs`(9개) | 통과. 구매·새 게임 로그가 샘플과 글자까지 같고, 응답 샘플을 DTO로 읽는다 |
+| 테스트 | `Assets/Tests/Net/SyncLogFactoryTests.cs`(5개) | 작성. 판 시작·결산 로그가 샘플과 같고, 공급·칸별 값이 순서대로 실린다 |
+| 테스트 | `Assets/Tests/Save/SyncLedgerTests.cs`(12개), `ProgressStoreTests.cs`(19개) | 작성. 5.7 규칙, 포맷 1 로드, 쓰기 실패, 깨진 `Sync`, 거부·덮어쓰기, 타이틀 응답 |
 
 - 응답의 산 노드 DTO 이름은 `ProgressNodeDto`다(통계 전송의 `BlackHole.Analytics.NodeRankDto`와 겹치지 않게).
