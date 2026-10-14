@@ -2,13 +2,9 @@ package org.example.feedablackhole.battle.rules;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Map;
 import org.example.feedablackhole.battle.content.BattleContent;
-import org.example.feedablackhole.battle.content.ContentBundleLoader;
 import org.example.feedablackhole.battle.content.EnemyKindDefinition;
 import org.example.feedablackhole.battle.content.EnemyStatIds;
 import org.junit.jupiter.api.Test;
@@ -18,14 +14,11 @@ import org.junit.jupiter.api.Test;
  */
 class UpgradeChainTests {
 
-    // 클래스패스 기준 실제 콘텐츠 위치(src/main/resources 아래)
-    private static final String CONTENT = "/content/";
-
-    // 실제 콘텐츠: 소행성 -> 행성 -> 항성 -> 은하로 이어지고, 혜성은 변환과 무관하다.
+    // 샘플 콘텐츠: 소행성 -> 행성 -> 항성 -> 은하로 이어지고, 혜성은 변환과 무관하다.
     // 변환되어 오는 종류가 없는 소행성과 혜성이 먼저 줄을 서고, 혜성이 행성보다 앞에 온다
     @Test
-    void realContentChainOrder() {
-        BattleContent battle = ContentBundleLoader.load(UpgradeChainTests::bytes).battle();
+    void sampleContentChainOrder() {
+        BattleContent battle = SampleContent.battle();
 
         assertThat(UpgradeChain.orderOf(battle.enemies()))
                 .containsExactly("asteroid", "comet", "planet", "star", "galaxy");
@@ -65,15 +58,6 @@ class UpgradeChainTests {
     private static EnemyKindDefinition kind(String enemyId, String upgradesTo) {
         return new EnemyKindDefinition(enemyId, false, upgradesTo, List.of(), List.of(), null,
                 new EnemyStatIds(null, null, null, null, null, null, Map.of(), null, null, null));
-    }
-
-    // 실제 콘텐츠 폴더에서 파일 바이트를 읽는다. 없으면 null
-    private static byte[] bytes(String path) {
-        try (InputStream in = UpgradeChainTests.class.getResourceAsStream(CONTENT + path)) {
-            return in == null ? null : in.readAllBytes();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 
 }

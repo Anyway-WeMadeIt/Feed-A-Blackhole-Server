@@ -3,15 +3,10 @@ package org.example.feedablackhole.battle.rules;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.example.feedablackhole.battle.content.BattleContent;
-import org.example.feedablackhole.battle.content.ContentBundle;
-import org.example.feedablackhole.battle.content.ContentBundleLoader;
 import org.example.feedablackhole.battle.content.EnemyKindDefinition;
 import org.example.feedablackhole.battle.content.HqMilestone;
 import org.example.feedablackhole.battle.content.SupplyEntry;
@@ -22,21 +17,18 @@ import org.junit.jupiter.api.Test;
 
 /**
  * RunComposition이 성장도와 산 노드로 판 설정을 올바르게 계산하는지 확인하는 테스트.
- * 서버가 쓰는 실제 콘텐츠 묶음(src/main/resources/content)으로 검사한다.
+ * 샘플 콘텐츠 묶음(src/test/resources/content-sample)으로 검사한다. 샘플의 성장은 이정표 3개(Level 10, 20, 30)다.
  */
 class RunCompositionTests {
-
-    // 클래스패스 기준 실제 콘텐츠 위치(src/main/resources 아래)
-    private static final String CONTENT = "/content/";
 
     private static NodeTree tree;
     private static BattleContent battle;
 
+    // 샘플 묶음의 노드 트리와 전투 콘텐츠를 가져온다
     @BeforeAll
     static void load() {
-        ContentBundle bundle = ContentBundleLoader.load(RunCompositionTests::bytes);
-        tree = bundle.nodeTree();
-        battle = bundle.battle();
+        tree = SampleContent.tree();
+        battle = SampleContent.battle();
     }
 
     // 성장도 0: Level 0에서 시작해 첫 이정표(Level 10)를 노린다
@@ -51,25 +43,32 @@ class RunCompositionTests {
         assertThat(run.nextMilestone()).contains(new HqMilestone(10, 690_000L));
     }
 
-    // 성장도 1: 첫 이정표의 Level에서 시작하고, 그 Level에 닿는 누적 EXP부터 센다
+    // 성장도 1, 2: 지난 이정표의 Level에서 시작하고, 그 Level에 닿는 누적 EXP부터 센다
     @Test
     void laterStagesStartAtTheLastReachedMilestone() {
-        RunComposition run = setup(1);
+        RunComposition first = setup(1);
 
-        assertThat(run.startLevel()).isEqualTo(10);
-        assertThat(run.goalLevel()).isEqualTo(20);
-        assertThat(run.startExp()).isEqualTo(250_000L);
-        assertThat(run.nextMilestone()).contains(new HqMilestone(20, 5_600_000L));
+        assertThat(first.startLevel()).isEqualTo(10);
+        assertThat(first.goalLevel()).isEqualTo(20);
+        assertThat(first.startExp()).isEqualTo(250_000L);
+        assertThat(first.nextMilestone()).contains(new HqMilestone(20, 5_600_000L));
+
+        RunComposition second = setup(2);
+
+        assertThat(second.startLevel()).isEqualTo(20);
+        assertThat(second.goalLevel()).isEqualTo(30);
+        assertThat(second.startExp()).isEqualTo(18_000_000L);
+        assertThat(second.nextMilestone()).contains(new HqMilestone(30, 420_000_000L));
     }
 
-    // 마지막 성장도(이정표 4개를 모두 지난 뒤): 목표가 없고 다음 이정표도 없다
+    // 마지막 성장도(이정표 3개를 모두 지난 뒤): 목표가 없고 다음 이정표도 없다
     @Test
     void theLastStageHasNoGoal() {
-        RunComposition run = setup(4);
+        RunComposition run = setup(3);
 
-        assertThat(run.startLevel()).isEqualTo(40);
+        assertThat(run.startLevel()).isEqualTo(30);
         assertThat(run.goalLevel()).isZero();
-        assertThat(run.startExp()).isEqualTo(190_000_000_000L);
+        assertThat(run.startExp()).isEqualTo(45_000_000L);
         assertThat(run.nextMilestone()).isEmpty();
     }
 
@@ -77,21 +76,7 @@ class RunCompositionTests {
     @Test
     void stageOutsideTheRangeIsRejected() {
         assertThatThrownBy(() -> setup(-1)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> setup(5)).isInstanceOf(IllegalArgumentException.class);
-    }
-
-    // 노드를 사지 않은 판 설정을 만든다
-    private static RunComposition setup(int growthStage) {
-        return RunComposition.of(battle, growthStage, NodeUpgradeValues.of(tree, Map.of()));
-    }
-
-    // 실제 콘텐츠 폴더에서 파일 바이트를 읽는다. 없으면 null
-    private static byte[] bytes(String path) {
-        try (InputStream in = RunCompositionTests.class.getResourceAsStream(CONTENT + path)) {
-            return in == null ? null : in.readAllBytes();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        assertThatThrownBy(() -> setup(4)).isInstanceOf(IllegalArgumentException.class);
     }
 
     // 노드를 사지 않은 성장도 0: 제한 시간 12초, 성장 시간 0, 처치 시간 보너스 0.3초
@@ -172,10 +157,10 @@ class RunCompositionTests {
     // 마지막 성장도(목표 없음): Level 사다리의 끝(Level 42)에서 멈춘다
     @Test
     void withoutAGoalTheLevelStopsAtTheEndOfTheLadder() {
-        RunComposition run = setup(4);
+        RunComposition run = setup(3);
 
-        assertThat(run.levelForExp(1_050_000_000_000L - 1)).isEqualTo(41); // Level 42 임계값 직전
-        assertThat(run.levelForExp(1_050_000_000_000L)).isEqualTo(42);
+        assertThat(run.levelForExp(10_500_000_000L - 1)).isEqualTo(41); // Level 42 임계값 직전
+        assertThat(run.levelForExp(10_500_000_000L)).isEqualTo(42);
         assertThat(run.levelForExp(Long.MAX_VALUE)).isEqualTo(42);
     }
 
@@ -200,7 +185,7 @@ class RunCompositionTests {
         assertThatThrownBy(() -> run.kind("nebula")).isInstanceOf(IllegalArgumentException.class);
     }
 
-    // 산 노드가 종류의 구성에 반영된다(소행성 크기 노드 2개 → 최대 크기 3)
+    // 산 노드가 종류의 구성에 반영된다(소행성 크기 노드 2개 -> 최대 크기 3)
     @Test
     void boughtNodesReachTheKindSetup() {
         RunComposition run = RunComposition.of(battle, 0,
@@ -223,46 +208,51 @@ class RunCompositionTests {
         }
     }
 
-    // 노드를 사지 않으면 콘텐츠의 시작 적(소행성 12마리)만 나온다
+    // 노드를 사지 않으면 콘텐츠의 시작 적(소행성 20마리)만 나온다
     @Test
     void startSupplyWithoutNodes() {
-        assertThat(setup(0).startSupply()).containsExactly(new SupplyEntry("asteroid", 12));
+        assertThat(setup(0).startSupply()).containsExactly(new SupplyEntry("asteroid", 20));
     }
 
-    // 시작 수 노드는 소행성 수를 늘린다(asteroid.count-01은 +18)
+    // 시작 수 노드는 소행성 수를 늘린다(asteroid.count-01은 +30)
     @Test
     void startSupplyBonusAddsToTheContentSupply() {
         assertThat(supplyWith("asteroid.count-01"))
-                .containsExactly(new SupplyEntry("asteroid", 30));
+                .containsExactly(new SupplyEntry("asteroid", 50));
     }
 
     // 변환 수만큼 다음 종류로 옮긴다(asteroid.toPlanet-02는 +5)
     @Test
     void upgradeMovesKindsToTheNextKind() {
         assertThat(supplyWith("asteroid.count-01", "asteroid.toPlanet-02"))
-                .containsExactly(new SupplyEntry("asteroid", 25), new SupplyEntry("planet", 5));
+                .containsExactly(new SupplyEntry("asteroid", 45), new SupplyEntry("planet", 5));
     }
 
-    // 가진 수보다 많이 옮기지 않고, 0마리가 된 종류는 빠진다(asteroid.toPlanet-01은 +52, 소행성은 30마리뿐)
+    // 가진 수보다 많이 옮기지 않고, 0마리가 된 종류는 빠진다(asteroid.toPlanet-01은 +52, 소행성은 50마리뿐)
     @Test
     void upgradeNeverMovesMoreThanWhatIsThere() {
         assertThat(supplyWith("asteroid.count-01", "asteroid.toPlanet-01"))
-                .containsExactly(new SupplyEntry("planet", 30));
+                .containsExactly(new SupplyEntry("planet", 50));
     }
 
     // 앞 종류에서 바뀐 수까지 센다: 행성은 콘텐츠에 없지만 소행성에서 바뀐 5마리를 전부 항성으로 옮긴다
     @Test
     void upgradeCountsKindsThatWereJustConverted() {
         assertThat(supplyWith("asteroid.toPlanet-02", "planet.toStar-01"))
-                .containsExactly(new SupplyEntry("asteroid", 7), new SupplyEntry("star", 5));
+                .containsExactly(new SupplyEntry("asteroid", 15), new SupplyEntry("star", 5));
     }
 
-    // 시작 수, 변환 둘 다 있고 체인이 이어진다. 종류는 처음 나온 순서(소행성, 행성, 항성)다
+    // 시작 수와 변환이 함께 있고 체인이 이어진다. 종류는 처음 나온 순서(소행성, 행성, 항성)다
     @Test
     void chainedUpgradesKeepTheFirstSeenOrder() {
         assertThat(supplyWith("asteroid.count-01", "asteroid.toPlanet-02", "planet.toStar-02"))
-                .containsExactly(new SupplyEntry("asteroid", 25), new SupplyEntry("planet", 3),
+                .containsExactly(new SupplyEntry("asteroid", 45), new SupplyEntry("planet", 3),
                         new SupplyEntry("star", 2));
+    }
+
+    // 노드를 사지 않은 판 설정을 만든다
+    private static RunComposition setup(int growthStage) {
+        return RunComposition.of(battle, growthStage, NodeUpgradeValues.of(tree, Map.of()));
     }
 
     // 노드를 Rank 1씩 산 판 설정의 시작 공급
@@ -273,4 +263,5 @@ class RunCompositionTests {
         }
         return RunComposition.of(battle, 0, NodeUpgradeValues.of(tree, ranks)).startSupply();
     }
+
 }

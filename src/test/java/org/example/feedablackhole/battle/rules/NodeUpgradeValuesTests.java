@@ -3,12 +3,8 @@ package org.example.feedablackhole.battle.rules;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
-import org.example.feedablackhole.battle.content.ContentBundleLoader;
 import org.example.feedablackhole.node.content.NodeDefinition;
 import org.example.feedablackhole.node.content.NodeTree;
 import org.example.feedablackhole.node.content.UpgradeStatDefinition;
@@ -17,19 +13,16 @@ import org.junit.jupiter.api.Test;
 
 /**
  * NodeUpgradeValues가 산 노드로 수치 값을 올바르게 계산하는지 확인하는 테스트.
- * 서버가 실제로 쓰는 콘텐츠 묶음(src/main/resources/content)의 노드 트리로 검사한다.
+ * 샘플 콘텐츠 묶음(src/test/resources/content-sample)의 노드 트리로 검사한다.
  */
 class NodeUpgradeValuesTests {
 
-    // 클래스패스 기준 실제 콘텐츠 위치(src/main/resources 아래)
-    private static final String CONTENT = "/content/";
-
     private static NodeTree tree;
 
-    // 실제 묶음을 한 번 읽어 노드 트리를 만든다
+    // 샘플 묶음의 노드 트리를 가져온다
     @BeforeAll
     static void loadTree() {
-        tree = ContentBundleLoader.load(NodeUpgradeValuesTests::bytes).nodeTree();
+        tree = SampleContent.tree();
     }
 
     /**
@@ -104,15 +97,6 @@ class NodeUpgradeValuesTests {
             if (stat.max() != null) {
                 assertThat(value).as(stat.statId()).isLessThanOrEqualTo(stat.max().floatValue());
             }
-        }
-    }
-
-    // 실제 콘텐츠 폴더에서 파일 바이트를 읽는다. 없으면 null
-    private static byte[] bytes(String path) {
-        try (InputStream in = NodeUpgradeValuesTests.class.getResourceAsStream(CONTENT + path)) {
-            return in == null ? null : in.readAllBytes();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
         }
     }
 

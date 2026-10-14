@@ -2,34 +2,26 @@ package org.example.feedablackhole.battle.rules;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.util.Map;
-import org.example.feedablackhole.battle.content.ContentBundle;
-import org.example.feedablackhole.battle.content.ContentBundleLoader;
 import org.example.feedablackhole.battle.content.SupplyEntry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 /**
  * ContentBattleRules가 upgradesFor와 setupFor를 이어서 판 설정을 계산하는지 확인하는 테스트.
- * 서버가 쓰는 실제 콘텐츠 묶음(src/main/resources/content)으로 검사한다.
+ * 샘플 콘텐츠 묶음(src/test/resources/content-sample)으로 검사한다.
  */
 class ContentBattleRulesTests {
 
-    // 클래스패스 기준 실제 콘텐츠 위치(src/main/resources 아래)
-    private static final String CONTENT = "/content/";
-
     private static BattleRules rules;
 
+    // 샘플 묶음의 노드 트리와 전투 콘텐츠로 규칙을 만든다(스프링 없이 직접 생성)
     @BeforeAll
     static void load() {
-        ContentBundle bundle = ContentBundleLoader.load(ContentBattleRulesTests::bytes);
-        rules = new ContentBattleRules(bundle.nodeTree(), bundle.battle());
+        rules = new ContentBattleRules(SampleContent.tree(), SampleContent.battle());
     }
 
-    // 노드를 사지 않은 성장도 0: 시작 Level 0, 제한 시간 12초, 시작 적은 소행성 12마리
+    // 노드를 사지 않은 성장도 0: 시작 Level 0, 제한 시간 12초, 시작 적은 소행성 20마리
     @Test
     void setupWithoutNodes() {
         RunSetup setup = rules.setupFor(0, rules.upgradesFor(Map.of()));
@@ -37,7 +29,7 @@ class ContentBattleRulesTests {
         assertThat(setup.growthStage()).isZero();
         assertThat(setup.startLevel()).isZero();
         assertThat(setup.timeLimitSeconds()).isEqualTo(12f);
-        assertThat(setup.startSupply()).containsExactly(new SupplyEntry("asteroid", 12));
+        assertThat(setup.startSupply()).containsExactly(new SupplyEntry("asteroid", 20));
     }
 
     // 산 노드가 수치 값을 거쳐 판 설정에 반영된다(timer-01은 제한 시간 +2초)
@@ -67,15 +59,6 @@ class ContentBattleRulesTests {
         assertThat(rules.setupFor(0, upgrades).timeLimitSeconds())
                 .isEqualTo(rules.setupFor(0, upgrades).timeLimitSeconds());
         assertThat(rules.setupFor(0, rules.upgradesFor(Map.of())).timeLimitSeconds()).isEqualTo(12f);
-    }
-
-    // 실제 콘텐츠 폴더에서 파일 바이트를 읽는다. 없으면 null
-    private static byte[] bytes(String path) {
-        try (InputStream in = ContentBattleRulesTests.class.getResourceAsStream(CONTENT + path)) {
-            return in == null ? null : in.readAllBytes();
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 
 }
