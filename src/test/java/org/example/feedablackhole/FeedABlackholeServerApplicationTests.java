@@ -3,6 +3,7 @@ package org.example.feedablackhole;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.example.feedablackhole.battle.content.BattleContent;
+import org.example.feedablackhole.battle.content.SupplyEntry;
 import org.example.feedablackhole.battle.rules.BattleRules;
 import org.example.feedablackhole.battle.rules.RunSetup;
 import org.example.feedablackhole.content.ContentManifest;
@@ -57,7 +58,10 @@ class FeedABlackholeServerApplicationTests {
     void contentBundleIsLoadedAtStartup() {
         assertThat(nodeTree.nodes()).hasSize(276);
         assertThat(battleContent.enemies()).hasSize(5);
-        assertThat(contentManifest.contentVersion()).matches("[0-9a-f]{16}");
+        // 스프링을 띄우는 테스트는 샘플 콘텐츠 묶음 위에서 돈다(build.gradle의 test 설정)
+        assertThat(contentManifest.contentVersion()).isEqualTo("4d6c398ad1f5e49c");
+        assertThat(battleRules.setupFor(0, battleRules.upgradesFor(Map.of())).startSupply())
+                .containsExactly(new SupplyEntry("asteroid", 20));
     }
 
 }
