@@ -199,7 +199,7 @@ public record SupplyEntry(String enemyId, int count) {}
 - `enemyId` 유일, `upgradesTo`가 존재하는 종류를 가리키고 변환 사슬에 순환이 없음.
 - 공급 종류(`pickup == false`)는 tier 6개, 수거형은 1개. Gold·EXP는 0 이상.
 - `golden`은 `traits`에 `golden`이 있을 때만 있고, 있으면 반드시 있다.
-- 모든 `stats` statId(`null` 제외)가 `UpgradeStats.csv`에 있다.
+- 모든 `stats` statId(`null` 제외)가 `UpgradeStats.csv`에 있다. ("모든 stats statId"에 최상위 stats.timer, stats.growthTime도 포함)
 - `levelExp`는 양수이고 증가한다. 이정표 Level은 증가하고 사다리 안이며, `targetGold`도 증가한다.
 - `startSupply`의 종류가 존재하고 수거형이 아니며 `count`가 0 이상이다.
 
@@ -253,7 +253,7 @@ public interface KindSetup {
 
     long goldOf(int tier, int size, boolean golden);    // EnemyDefinition.StatsAt의 Gold
     long expOf(int tier, int size);                     // EnemyDefinition.StatsAt의 Exp
-    long goldenCritBonusOf(int tier, int size);         // round(goldOf(tier, size, true) × critRewardScale)
+    long goldenCritBonusOf(int tier, int size);         // round((long)goldOf(tier, size, true) × (float)critRewardScale)
 }
 ```
 
@@ -276,6 +276,7 @@ public interface KindSetup {
 | Gold·EXP | `checked((long) Math.Round(value × (double) multiplier, AwayFromZero))` | `long × (double) float`를 .5에서 0에서 먼 쪽으로 반올림. 크기 배율 `1 + (size − 1) × 1.0f` |
 | 제한 시간 | `Duration + gainOf(timer)` (float) | 같음 |
 | 성장 공급·시작 공급 | `GameSessionFactory.StartSupplyOf` | 같은 순서(콘텐츠 시작 공급 → 보너스 → 변환 사슬 위상 정렬) |
+| 황금 치명 보너스 | `(long) Math.Round(gold * critRewardScale, MidpointRounding.AwayFromZero)` | long × float이라 float 곱셈 |
 
 - 일치 여부는 C#이 생성한 기대값 표(W4-1a, 에디터 도구 `Editor/SyncFixtures`)로 확인한다. 이 표가 이 장의 실행 가능한 기준이다. 표는 콘텐츠 버전에 묶여 있어 `contentVersion`을 함께 담고, 서버 콘텐츠 버전과 다르면 다시 만들어야 한다.
 
@@ -288,6 +289,9 @@ public interface KindSetup {
 | C3 | 스탯 → 적 구성의 연결은 **데이터로 내보낸다**(`stats` 필드) | `EnemyUpgradeStats`의 switch를 Java로 옮기지 않아도 되고, 클라이언트가 바꾸면 자동으로 따라간다 |
 | C4 | 질량 규칙을 옮겨 S2에 "나올 수 없는 색" 검사를 더한다 | 30줄 정도로 검증이 강해진다 |
 | C5 | 서버 전투 계산은 BigDecimal이 아니라 C#과 같은 float·double로 한다 | 정확한 등식 검사를 위해서다. 노드 비용(정수)은 기존 BigDecimal 모델을 그대로 쓴다 |
+| C28 | 황금 치명 보너스는 long × float을 float 곱셈으로 계산한다 | 클라이언트도 float 곱셈이다. double로 곱하면 큰 Gold에서 값이 달라져 S5, S6 등식이 실패한다 |
+| C29 | UpgradeContentCheck는 서버 코드로 옮기지 않고 테스트로 확인한다 | 콘텐츠 작성 실수를 막는 검사라 요청 처리에는 필요 없다. 테스트가 같은 확인을 한다 |
+| C30 | 서버 테스트는 샘플 묶음 위에서 진행한다 | 샘플 로그(계약 3.8)가 샘플 묶음 기준이고, 샘플은 값이 고정이라 실제 콘텐츠가 바뀌어도 테스트가 깨지지 않는다 |
 
 ### 1.9 산출물
 
@@ -755,6 +759,7 @@ API 명세의 형식 그대로다. `progress`는 `GET /me/progress`와 같은 �
 
 - 클라이언트 로그 생성기(W3-2)가 만든 JSON은 이 샘플과 **같은 키·같은 타입**이어야 한다(키 순서와 공백은 달라도 된다). W4-3의 계약 테스트가 이것을 확인한다.
 - 서버 처리기 테스트(W1-3, W1-5, W1-6)와 E2E(W1-8)는 이 샘플을 기본 시나리오로 쓴다.
+- 서버 테스트가 샘플 묶음 위에서 돈다.
 
 ### 3.9 결정 사항 (3장, 확정)
 
