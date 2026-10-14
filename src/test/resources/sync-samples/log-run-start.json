@@ -10,7 +10,7 @@
     "startGrowthStage": 0,
     "startGold": 0,
     "startLevel": 0,
-    "timeLimitSeconds": 12,
+    "timeLimitSeconds": 12.0,
     "startSupply": [
       {
         "enemyId": "asteroid",
