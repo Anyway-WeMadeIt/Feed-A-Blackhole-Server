@@ -332,7 +332,7 @@ DTO만으로는 부족하다. 아래 계산식은 클라이언트 코드에 있�
 | W1-1 | S | S | - | V3 마이그레이션, 엔티티, 리포지토리 |
 | W1-2 | S | M | W1-1 | 로그 DTO, `POST /me/sync`, 적용 엔진(순차 적용·멈춤·건너뜀·누락, 항상 진행도 응답) |
 | W1-3 | S | M | W0-3, W1-2 | `NODE_PURCHASE`(`NodePurchase` 이식), `RESET` 처리기 |
-| W1-4 | S | L | W0-3 | 전투 규칙 이식(4.3, 계약 1.6의 `BattleRules` 구현): 스탯 합산, 판 구성 일부, 질량 규칙, 칸별 골드·경험치, 시작 적 수, 제한 시간, Level 계산 |
+| W1-4 | S | L | W0-3 | 전투 규칙 이식(4.3, 계약 1.6의 `BattleRules` 구현): 스탯 합산, 판 구성 일부, 질량 규칙, 칸별 골드·경험치, 시작 적 수, 제한 시간, Level 계산. **완료**(B, C# 기대값 표 일치는 W4-1b) |
 | W1-5 | S | S | W1-2, W1-4 | `RUN_START` 처리기, 의심 표시 |
 | W1-6 | S | M | W1-2, W1-4 | `SETTLEMENT` 처리기, `SettlementValidator`(S1~S9) |
 | W1-7 | S | S | W1-3 | 옛 API 제거, `GET /me/progress`에 `lastAppliedSeq` 추가 |

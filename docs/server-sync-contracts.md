@@ -205,7 +205,7 @@ public record SupplyEntry(String enemyId, int count) {}
 
 ### 1.6 전투 규칙 인터페이스 (Java)
 
-패키지 `org.example.feedablackhole.battle.rules`. B가 구현(W1-4)하고, A의 결산 검증(W1-6)과 B의 판 시작 처리기(W1-5)가 쓴다.
+패키지 `org.example.feedablackhole.battle.rules`. B가 구현했고(W1-4, 완료), A의 결산 검증(W1-6)과 B의 판 시작 처리기(W1-5)가 쓴다.
 
 ```java
 public interface BattleRules {
@@ -299,7 +299,7 @@ public interface KindSetup {
 |---|---|---|
 | 묶음 목차, 버전 계산(기준 구현) | `content/ContentManifest`, `content/ContentVersion` | W0-3(B), W0-1·W0-2(A·C가 C#으로 같은 계산을 구현) |
 | 전투 콘텐츠 객체(1.5) | `battle/content/*` | W0-3, W1-4(B), W1-6(A) |
-| 전투 규칙 인터페이스(1.6) | `battle/rules/*` (구현 없음) | W1-4(B 구현), W1-5(B), W1-6(A) |
+| 전투 규칙(1.6~1.7) | `battle/rules/*`: 인터페이스와 구현(`ContentBattleRules` 빈, `NodeUpgradeValues`, `RunComposition`, `KindComposition`, `UpgradeChain`, `MassRule`, `SizeRule`, `StartSupply`, `Rounding`) | **구현 완료**(W1-4, B). 쓰는 곳: W1-5(B), W1-6(A). C# 기대값 표 일치 확인은 W4-1b |
 | 샘플 묶음 | `src/test/resources/content-sample/` | W0-3 로더 테스트(B) |
 | 테스트 | `ContentVersionTests`(샘플 묶음의 목차 버전과 Java 계산이 같은지), `HqGrowthDefinitionTests` | - |
 
