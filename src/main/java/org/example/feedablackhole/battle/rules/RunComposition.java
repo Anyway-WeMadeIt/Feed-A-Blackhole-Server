@@ -50,10 +50,11 @@ public final class RunComposition implements RunSetup {
 
     // 적 종류 이름(enemyId) -> 이 판에서의 종류 구성. 종류 순서(battle.json의 enemies 순서)를 지킨다
     private final Map<String, KindComposition> kinds;
+    private final List<SupplyEntry> startSupply;
 
     private RunComposition(HqGrowthDefinition growth, int growthStage, int startLevel, int goalLevel, long startExp,
             Optional<HqMilestone> nextMilestone, float timeLimitSeconds, float growthTimeSeconds, float killTimeBonusSeconds,
-            Map<String, KindComposition> kinds) {
+            Map<String, KindComposition> kinds, List<SupplyEntry> startSupply) {
         this.growth = growth;
         this.growthStage = growthStage;
         this.startLevel = startLevel;
@@ -64,6 +65,7 @@ public final class RunComposition implements RunSetup {
         this.growthTimeSeconds = growthTimeSeconds;
         this.killTimeBonusSeconds = killTimeBonusSeconds;
         this.kinds = kinds;
+        this.startSupply = startSupply;
     }
 
     /**
@@ -105,8 +107,10 @@ public final class RunComposition implements RunSetup {
             kinds.put(definition.enemyId(), KindComposition.from(definition, upgrades));
         }
 
+        List<SupplyEntry> startSupply = StartSupply.of(content, kinds);
+
         return new RunComposition(growth, growthStage, startLevel, goalLevel, startExp, nextMilestone,
-                timeLimitSeconds, growthTimeSeconds, killTimeBonusSeconds, kinds);
+                timeLimitSeconds, growthTimeSeconds, killTimeBonusSeconds, kinds, startSupply);
     }
 
     @Override
@@ -151,7 +155,7 @@ public final class RunComposition implements RunSetup {
 
     @Override
     public List<SupplyEntry> startSupply() {
-        throw new UnsupportedOperationException("아직 구현하지 않았다");
+        return startSupply;
     }
 
     // 이름으로 종류 구성을 찾는다. 없으면 빈 Optional

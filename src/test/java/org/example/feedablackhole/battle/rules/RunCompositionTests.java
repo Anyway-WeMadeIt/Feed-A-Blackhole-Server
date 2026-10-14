@@ -7,12 +7,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.example.feedablackhole.battle.content.BattleContent;
 import org.example.feedablackhole.battle.content.ContentBundle;
 import org.example.feedablackhole.battle.content.ContentBundleLoader;
 import org.example.feedablackhole.battle.content.EnemyKindDefinition;
 import org.example.feedablackhole.battle.content.HqMilestone;
+import org.example.feedablackhole.battle.content.SupplyEntry;
 import org.example.feedablackhole.node.content.NodeDefinition;
 import org.example.feedablackhole.node.content.NodeTree;
 import org.junit.jupiter.api.BeforeAll;
@@ -219,5 +221,56 @@ class RunCompositionTests {
             RunComposition run = RunComposition.of(battle, stage, NodeUpgradeValues.of(tree, everything));
             assertThat(run.timeLimitSeconds()).as("성장도 %d", stage).isPositive();
         }
+    }
+
+    // 노드를 사지 않으면 콘텐츠의 시작 적(소행성 12마리)만 나온다
+    @Test
+    void startSupplyWithoutNodes() {
+        assertThat(setup(0).startSupply()).containsExactly(new SupplyEntry("asteroid", 12));
+    }
+
+    // 시작 수 노드는 소행성 수를 늘린다(asteroid.count-01은 +18)
+    @Test
+    void startSupplyBonusAddsToTheContentSupply() {
+        assertThat(supplyWith("asteroid.count-01"))
+                .containsExactly(new SupplyEntry("asteroid", 30));
+    }
+
+    // 변환 수만큼 다음 종류로 옮긴다(asteroid.toPlanet-02는 +5)
+    @Test
+    void upgradeMovesKindsToTheNextKind() {
+        assertThat(supplyWith("asteroid.count-01", "asteroid.toPlanet-02"))
+                .containsExactly(new SupplyEntry("asteroid", 25), new SupplyEntry("planet", 5));
+    }
+
+    // 가진 수보다 많이 옮기지 않고, 0마리가 된 종류는 빠진다(asteroid.toPlanet-01은 +52, 소행성은 30마리뿐)
+    @Test
+    void upgradeNeverMovesMoreThanWhatIsThere() {
+        assertThat(supplyWith("asteroid.count-01", "asteroid.toPlanet-01"))
+                .containsExactly(new SupplyEntry("planet", 30));
+    }
+
+    // 앞 종류에서 바뀐 수까지 센다: 행성은 콘텐츠에 없지만 소행성에서 바뀐 5마리를 전부 항성으로 옮긴다
+    @Test
+    void upgradeCountsKindsThatWereJustConverted() {
+        assertThat(supplyWith("asteroid.toPlanet-02", "planet.toStar-01"))
+                .containsExactly(new SupplyEntry("asteroid", 7), new SupplyEntry("star", 5));
+    }
+
+    // 시작 수, 변환 둘 다 있고 체인이 이어진다. 종류는 처음 나온 순서(소행성, 행성, 항성)다
+    @Test
+    void chainedUpgradesKeepTheFirstSeenOrder() {
+        assertThat(supplyWith("asteroid.count-01", "asteroid.toPlanet-02", "planet.toStar-02"))
+                .containsExactly(new SupplyEntry("asteroid", 25), new SupplyEntry("planet", 3),
+                        new SupplyEntry("star", 2));
+    }
+
+    // 노드를 Rank 1씩 산 판 설정의 시작 공급
+    private static List<SupplyEntry> supplyWith(String... nodeIds) {
+        Map<String, Integer> ranks = new HashMap<>();
+        for (String nodeId : nodeIds) {
+            ranks.put(nodeId, 1);
+        }
+        return RunComposition.of(battle, 0, NodeUpgradeValues.of(tree, ranks)).startSupply();
     }
 }
