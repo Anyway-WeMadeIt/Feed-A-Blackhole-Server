@@ -240,7 +240,17 @@ C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서
   - `HeadlessBattle`: 판 하나를 봇으로 끝까지 돌리고 결산한다. 삭제 전 `BattleRunner`(`git show 97ccf73:Assets/Scripts/Simulation/BattleRunner.cs`)에서 필요한 부분만 옮겼다. 판 만들기 → 시작 → 프레임마다 [봇 조준 → 진행] → 종료 → 남은 적 치우기 → 원시 기록 → 결산. 결과(`HeadlessBattleResult`)에 `RunStartInfo`, 시작·결산 후 Gold, `BattleRawData`, 중단 여부가 있어 `SyncLogFactory`가 그대로 쓴다.
   - `NearestEnemyBot`: 지금 조준점에서 가장 가까운 살아 있는 적을 겨냥하는 최소 봇이다. **블랙홀 둘레를 도는 `CircleAimBot`은 쓰지 않는다.** 시작 콘텐츠의 공격(피해 1, 간격 1초, 반경 0.87)으로는 처치 0, Gold 0에서 진행이 멈춘다.
   - `CheapestFirstBuyer`: 싼 노드부터 사며 구매 기록(노드, Rank, 비용)을 돌려준다. `ScenarioRunner`의 자동 구매는 산 개수만 알려 주어 로그에 쓸 수 없어서 따로 두었다(같은 규칙: 싼 것부터, 같은 값이면 노드 id 순).
-  - `SyncFixturesMenu`: `BlackHole > Sync Fixtures > Smoke Run`. 재현성 확인, 이어서 [판 → 결산 → 구매] 진행, 소요 시간 측정. 이정표에 닿지 못한 채 N판(기본 300)이면 막힘으로 멈춘다. 긴 실행은 `StartBackgroundSmoke`로 에디터를 멈추지 않고 돌릴 수 있다.
+  - `SyncFixturesMenu`, `SyncFixturesWindow`: 스모크 실행 메뉴와 창(아래 "실행 방법"). 재현성 확인, 이어서 [판 → 결산 → 구매] 진행, 소요 시간 측정. 이정표에 닿지 못한 채 N판이면 막힘으로 멈춘다.
+- **실행 방법**(Unity 에디터, 메뉴 `BlackHole > Sync Fixtures`):
+
+  | 메뉴 | 동작 | 용도 |
+  |---|---|---|
+  | `Smoke Run` | 30판을 바로 돌린다(약 0.3초). 결과는 콘솔에 남는다 | 빠른 확인, 재현성 |
+  | `Campaign Run (성장도 3까지)` | 이정표 없이 300판이면 막힘으로 멈춘다. 지금 봇으로는 약 600판, 1분 안팎. 백그라운드로 돌고 취소할 수 있는 진행 막대가 뜬다. 끝나면 보고서가 콘솔에 남는다 | 이정표 도달과 막힘까지 |
+  | `Run Window...` | 창에서 판 수, 판 상한(초), 막힘 기준(0이면 끔), 출력 간격(0이면 판 수에 맞춰 자동)을 정해 돌린다. 실행·취소 버튼, 끝난 뒤 보고서와 복사 버튼이 있고 값은 에디터를 다시 열어도 남는다 | 판 수를 조절해야 할 때 |
+
+  - **결과 보는 법**: 콘솔(`Window > General > Console`)의 `[SyncFixtures]` 로그(창은 창 안에 표시). `재현성 ... 같다`여야 하고, `상한에서 끊긴 판 0개`여야 한다. `판 N:` 줄에 처치, 번 Gold, Level, EXP, 이정표 도달 여부, 구매 수, 소요 시간이 있다. 콘텐츠가 바뀌면 `콘텐츠 버전`과 수치가 달라진다.
+  - **코드 호출**: 다른 도구(W4-1a, W4-2a)나 자동 실행은 `SyncFixturesMenu.SmokeRun(판 수, 판 상한, 출력 간격, 막힘 기준)`(동기) 또는 `StartBackgroundSmoke(...)`(백그라운드, 결과는 `BackgroundReport`, 진행은 `Progress`, 취소는 `CancelRequested`)를 부른다.
 - **참조**: 삭제 전 커밋 `97ccf73`의 `Assets/Scripts/Simulation/`, 계약 5.3.
 - **결정(확정)**: 에디터 도구는 테스트 어셈블리가 참조할 수 없다(`GameContentSetup`·`GameContentLoader`가 `Assembly-CSharp`에 있다). 그래서 판 실행기와 봇은 에디터 전용으로 두고, NUnit 테스트 대신 위 스모크 실행과 아래 측정으로 확인했다. 판 실행기를 Unity 무관 어셈블리에 두는 안은 테스트용 `GameContent`를 만들 방법이 필요해 택하지 않았다.
 - **완료 조건과 확인 결과**(2026-10-14, 현재 콘텐츠 `bbdb35fcdf5bc984`):
@@ -249,7 +259,7 @@ C의 작업은 모두 클라이언트 저장소(`Feed-A-Blackhole-Client`)에서
   - 안전 상한에서 끊기면 표시가 남는다: 충족(`Capped`). 상한에서 끊긴 판은 0개였다.
   - 결과에서 `BattleRawData`와 `RunStartInfo`를 읽을 수 있다: 충족.
   - 기존 파일 변경 없음, 빌드에 포함되지 않음: 충족.
-  - 판당 소요 시간(에디터 Mono): 초반 2~11ms, 후반 200~600ms, 500판에 56초(평균 113ms).
+  - 판당 소요 시간(에디터 Mono): 초반 2~11ms, 후반 200~600ms, 500판에 56초(평균 113ms). 메뉴 `Campaign Run`으로는 600판에 74초(평균 123ms), 성장도 3에서 막혀 멈췄다.
 - **알려진 한계**: `NearestEnemyBot`은 성장도 3(Lv30)에 약 300판에 닿지만, 이후 모든 노드를 사고도 Lv38에서 멈춰 마지막 이정표(Lv40)에 닿지 못한다. 자세한 영향은 W4-2a.
 - **선행**: 없음.
 
