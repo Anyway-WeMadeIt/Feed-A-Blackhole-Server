@@ -161,6 +161,23 @@ public final class FakeClient {
         return call("GET", "/me/progress", null);
     }
 
+    // ---------- 동기화 ----------
+
+    /**
+     * 요청 본문 전체를 보낸다.
+     */
+    public Response sync(String requestJson) {
+        return call("POST", "/me/sync", requestJson);
+    }
+
+    /**
+     * 로그 글자들을 이어 붙여 보낸다.
+     */
+    public Response sync(String... logJsons) {
+        String requestJson = "{\"logs\":[" + String.join(",", logJsons) + "]}";
+        return sync(requestJson);
+    }
+
     // ---------- 저수준: 요청 한 건 ----------
 
     /**
