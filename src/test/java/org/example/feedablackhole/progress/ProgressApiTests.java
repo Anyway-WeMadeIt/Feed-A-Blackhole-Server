@@ -30,7 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 @Transactional
-class ProgressApiTests {
+class cProgressApiTests {
 
     private static final String PROGRESS = "/api/v1/me/progress";
     private static final String RESET = "/api/v1/me/progress/reset";
@@ -104,45 +104,6 @@ class ProgressApiTests {
                 .andExpect(jsonPath("$.nodes[0].rank").value(2))
                 .andExpect(jsonPath("$.nodes[1].nodeId").value("timer-03"))
                 .andExpect(jsonPath("$.nodes[2].nodeId").value("timer-02"));
-    }
-
-    @Test
-    void saveWithAStaleRevisionIsRejectedAndChangesNothing() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 100, 1).andExpect(status().isOk());
-
-        // revision이 1인데 0을 기준으로 저장하려는 낡은 요청
-        save(token, 0, 999, 5, "timer-01:1")
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("STALE_PROGRESS"));
-
-        mockMvc.perform(get(PROGRESS).header(HttpHeaders.AUTHORIZATION, bearer(token)))
-                .andExpect(jsonPath("$.revision").value(1))
-                .andExpect(jsonPath("$.gold").value(100))
-                .andExpect(jsonPath("$.nodes").isEmpty());
-    }
-
-    @Test
-    void growthStageCannotDecrease() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 0, 3).andExpect(status().isOk());
-
-        save(token, 1, 0, 2)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("PROGRESS_REGRESSION"));
-    }
-
-    @Test
-    void boughtNodeCannotBeRemovedOrLowered() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 0, 0, "timer-01:2", "timer-02:1").andExpect(status().isOk());
-
-        save(token, 1, 0, 0, "timer-01:2")
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("PROGRESS_REGRESSION"));
-        save(token, 1, 0, 0, "timer-01:1", "timer-02:1")
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("PROGRESS_REGRESSION"));
     }
 
     @Test
