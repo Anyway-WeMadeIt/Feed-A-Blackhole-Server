@@ -38,7 +38,7 @@ public final class SettlementHandler implements LogHandler<SettlementPayload> {
         // S1을 먼저 확인해야 열린 판의 성장도로 판 설정을 만들 수 있다
         Optional<SettlementValidator.Violation> violation = validator.checkRunOpen(payload, context);
         if (violation.isPresent()) {
-            return rejected(violation);
+            return rejected(violation.get());
         }
 
         OpenRun openRun = context.openRun().orElseThrow();
@@ -46,7 +46,7 @@ public final class SettlementHandler implements LogHandler<SettlementPayload> {
 
         violation = validator.validate(payload, setup, context.gold());
         if (violation.isPresent()) {
-            return rejected(violation);
+            return rejected(violation.get());
         }
 
         // 검사를 모두 통과했다. 서버가 계산한 값을 적용한다
@@ -60,9 +60,8 @@ public final class SettlementHandler implements LogHandler<SettlementPayload> {
         return HandleResult.applied();
     }
 
-    private static HandleResult rejected(Optional<SettlementValidator.Violation> violation) {
-        SettlementValidator.Violation found = violation.orElseThrow();
-        return HandleResult.rejected(found.code(), found.message());
+    private static HandleResult rejected(SettlementValidator.Violation violation) {
+        return HandleResult.rejected(violation.code(), violation.message());
     }
 
 }

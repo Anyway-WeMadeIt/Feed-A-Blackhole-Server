@@ -36,8 +36,8 @@ public final class RunComposition implements RunSetup {
     // startLevel에 닿는 누적 EXP. 결산의 exp는 이 값부터 센다
     private final long startExp;
 
-    // 이 판이 노리는 이정표. 마지막 이정표 뒤면 비어 있다
-    private final Optional<HqMilestone> nextMilestone;
+    // 이 판이 노리는 이정표. 마지막 이정표 뒤면 null이다(Optional은 필드에 두지 않고 nextMilestone()이 감싸서 돌려준다)
+    private final HqMilestone nextMilestone;
 
     // 노드가 반영된 시작 제한 시간(초): 기본 시간 + timer가 늘어난 양
     private final float timeLimitSeconds;
@@ -55,7 +55,7 @@ public final class RunComposition implements RunSetup {
     private final List<SupplyEntry> startSupply;
 
     private RunComposition(HqGrowthDefinition growth, int growthStage, int startLevel, int goalLevel, long startExp,
-            Optional<HqMilestone> nextMilestone, float timeLimitSeconds, float growthTimeSeconds, float killTimeBonusSeconds,
+            HqMilestone nextMilestone, float timeLimitSeconds, float growthTimeSeconds, float killTimeBonusSeconds,
             Map<String, KindComposition> kinds, List<SupplyEntry> startSupply) {
         this.growth = growth;
         this.growthStage = growthStage;
@@ -84,7 +84,7 @@ public final class RunComposition implements RunSetup {
         int startLevel = growth.startLevelAt(growthStage);
         int goalLevel = growth.goalLevelAt(growthStage);
         long startExp = growth.expToReach(startLevel).orElse(0); // Level 0처럼 값이 없으면 0
-        Optional<HqMilestone> nextMilestone = growth.nextMilestoneAt(growthStage);
+        HqMilestone nextMilestone = growth.nextMilestoneAt(growthStage).orElse(null); // 마지막 이정표 뒤면 null
 
         // 노드로 정해지는 시간. 제한 시간은 value가 아니라 늘어난 양(gain)을 기본 시간에 더한다(float 덧셈)
         float timeLimitSeconds = content.rules().timeLimitSeconds() + upgrades.gainOf(content.stats().timer());
@@ -138,7 +138,7 @@ public final class RunComposition implements RunSetup {
 
     @Override
     public Optional<HqMilestone> nextMilestone() {
-        return nextMilestone;
+        return Optional.ofNullable(nextMilestone);
     }
 
     @Override
