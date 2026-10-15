@@ -916,7 +916,7 @@ public interface SyncContext {
     void setNodeRank(String nodeId, int rank);  // 새 노드면 처음 산 순서의 끝에 붙는다
     void setGrowthStage(int growthStage);
     void resetProgress();                    // Gold 0, 성장도 0, 산 노드 없음. 열린 판은 포기로 닫는다
-    void abandonOpenRun();                   // 열린 판이 없으면 아무것도 하지 않는다
+    void abandonOpenRun();                   // 열린 판이 없으면 아무것도 하지 않는다. NODE_PURCHASE도 검사를 통과한 뒤 부른다(C31)
     void openRun(RunStartPayload payload, List<SuspicionReason> suspicions);
                                              // 열린 판이 있으면 먼저 abandonOpenRun()을 부른다(처리기 책임)
     void settleOpenRun(long settledGold, int nextGrowthStage);
@@ -953,6 +953,7 @@ public enum SuspicionReason {
 | C20 | `battle_run`의 시작 Gold·성장도는 서버 진행도 값으로 적는다 | 결산 검증의 기준은 서버 값이다 |
 | C21 | `revision` 열은 W1-7(옛 API 제거) 때 지운다 | 옛 API와 그 테스트가 W1-7 전까지 그대로 돌게 한다 |
 | C22 | `timeLimitSeconds` 비교 허용 오차 0.001초 | 같은 float 계산이면 같은 값이 나오므로 작게 둔다 |
+| C31 | `NODE_PURCHASE`가 열린 판이 있을 때 오면, 구매 처리기가 구매를 적용하면서 그 판을 **포기로 닫는다**(보상 없음, 구매가 거부되면 닫지 않는다). `RESET`·`RUN_START`와 같은 규칙이다 | 결산 검증(S2~S9)은 결산 시점의 노드 랭크로 판 설정을 계산한다. 판 도중 구매가 끼면 더 강해진 노드 기준으로 검증이 느슨해지는데, 구매가 판을 닫으면 그 판의 결산은 `RUN_NOT_OPEN`이라 이 경로가 막힌다. 거부와 달리 정상 플레이어의 구매가 사라지지 않는다. 정상 클라이언트는 결산 로그가 구매 로그보다 먼저 만들어지므로 영향이 없다 |
 
 ### 4.6 엔진 구현 메모 (W1-2)
 
@@ -974,6 +975,7 @@ public enum SuspicionReason {
 | 로그 타입·거부 코드·payload | `sync/log/LogType`, `RejectCode`, `sync/log/payload/*` | 완료 |
 | 처리기 경계 | `sync/handler/LogHandler`, `HandleResult`, `SyncContext`, `OpenRun`, `SuspicionReason` | 완료(구현 없음) |
 | 테스트 | `SyncSchemaTests`(6개) | 통과 |
+| 결산 처리기(W1-6) | `sync/handler/SettlementHandler`, `SettlementValidator`, 테스트 `SettlementHandlerTests`(31개) | 완료 |
 
 - `sync_log` 테이블의 엔티티 이름은 `SyncLogRecord`다(로그 자체와 구분).
 - 1장의 코드(`content/`, `battle/`)는 `feat/load-battle-content` 브랜치에만 있고 `dev`에는 아직 없다. 4장 코드는 그것에 의존하지 않는다. 처리기 구현(W1-3, W1-5, W1-6)이 `NodeTree`·`BattleRules`를 쓰므로, W0-3이 `dev`에 병합된 뒤 시작한다.
@@ -1218,7 +1220,7 @@ public enum SyncCallOutcome
 | 로그인 전체 / 요청 / 동기화 요청 타임아웃 | 8 / 5 / 10초 | 2장 C11 |
 | 요청당 로그 수 / 본문 | 500개 / 1 MB | 3장 C14 |
 | 판 시작 제한 시간 비교 | 0.001초 | 4장 C22 |
-| 결산 시간 검사(S8) 허용 오차 | W1-6에서 결산 검증과 함께 정한다 | 서버 내부 값이라 클라이언트에 영향 없음 |
+| 결산 시간 검사(S8) 허용 오차 | 상한 + 0.01초 + 상한의 0.01%(W1-6) | 서버 내부 값이라 클라이언트에 영향 없음 |
 | 거부 알림 문구 | 5.9 | |
 
 ### 5.12 결정 사항 (5장, 확정)
@@ -1229,7 +1231,7 @@ public enum SyncCallOutcome
 | C24 | 진행도와 대기 로그를 `progress.json` 한 파일에 함께 저장한다(포맷 2) | 한 번의 원자적 쓰기로 둘이 어긋나지 않는다 |
 | C25 | 거부가 없으면 남은 로그가 있는 동안 서버 진행도로 덮어쓰지 않는다 | 응답을 기다리는 동안 생긴 로그의 효과를 잃지 않는다 |
 | C26 | 전송은 동시에 하나만, 나눈 요청은 앞 응답을 반영한 뒤 다음을 보낸다 | seq 순서와 거부 후 멈춤을 단순하게 보장한다 |
-| C27 | 결산 시간 검사(S8)의 허용 오차는 W1-6에서 정한다 | 서버 내부 값이고 결산 검증과 함께 보정해야 한다 |
+| C27 | 결산 시간 검사(S8)의 허용 오차는 상한 + 0.01초 + 상한의 0.01%로 한다(W1-6) | 서버 내부 값이다. 클라이언트는 판 시간을 제한 시간 안으로 자르므로 float 누적 오차만 허용하고, 실측 보정은 골든 로그(W4-2b)에서 확인한다 |
 
 ### 5.13 산출물
 
