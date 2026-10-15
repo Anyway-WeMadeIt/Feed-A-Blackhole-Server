@@ -89,6 +89,22 @@ docker compose up -d        # MySQL 8.4 시작 (healthy가 될 때까지 몇 초
 - JWT 서명 키 `JWT_SECRET`도 `.env`에 둡니다. 32자 이상의 무작위 문자열이어야 하며, 비어 있거나 짧으면 서버가 시작되지 않습니다. 생성 예: `python -c "import secrets;print(secrets.token_urlsafe(48))"`. 키를 바꾸면 이미 발급된 액세스 토큰이 모두 무효가 됩니다.
 - 배포 환경에서는 `.env` 대신 환경변수 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`으로 주입합니다.
 
+## 컨테이너 이미지
+
+운영 환경은 Docker 이미지로 실행합니다. 이미지에는 `.env`와 비밀값이 들어가지 않으며(`.dockerignore`), 설정은 실행할 때 환경변수로 넣습니다.
+
+```sh
+docker build -t feedablackhole-server .
+docker run --rm -p 8080:8080 \
+  -e DB_URL='jdbc:mysql://host.docker.internal:3306/feedablackhole' \
+  -e DB_USERNAME=blackhole -e DB_PASSWORD=<비밀번호> -e JWT_SECRET=<32자 이상 무작위 문자열> \
+  feedablackhole-server
+```
+
+- 로컬 MySQL(`docker compose up -d`)에 붙여 보려면 위처럼 `DB_URL`로 호스트의 DB를 가리킵니다. 비밀번호는 `.env` 값을 사용합니다.
+- 헬스체크: `GET /actuator/health`는 토큰 없이 호출할 수 있고, DB에 연결되지 않으면 `503 {"status":"DOWN"}`을 반환합니다. 상세 정보는 노출하지 않으며 다른 actuator 경로는 열려 있지 않습니다.
+- 종료 신호(SIGTERM)를 받으면 처리 중인 요청을 마친 뒤(최대 20초) 내려갑니다.
+
 ## DB 스키마 (Flyway)
 
 - 스키마 변경은 `src/main/resources/db/migration/V<번호>__<설명>.sql` 파일로 추가합니다. 예: `V1__create_account.sql`
