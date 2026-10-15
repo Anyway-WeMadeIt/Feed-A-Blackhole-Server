@@ -40,6 +40,11 @@ dependencies {
     testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
+// 버전이 바뀌어도 Dockerfile이 같은 이름으로 복사할 수 있도록 실행 jar 이름을 고정한다.
+tasks.named('bootJar') {
+    archiveFileName = 'app.jar'
+}
+
 tasks.named('test') {
     useJUnitPlatform()
     // 테스트용 JWT 서명 키. 실제 값이 아니며, .env가 없는 환경(CI 등)에서도 테스트가 돌도록 한다.
