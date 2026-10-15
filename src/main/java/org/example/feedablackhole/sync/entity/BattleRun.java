@@ -100,7 +100,7 @@ public class BattleRun extends BaseTimeEntity {
         this.nextGrowthStage = nextGrowthStage;
     }
 
-    /** 결산 없이 닫는다(다음 RUN_START·RESET, 판 도중 앱 종료). */
+    /** 결산 없이 닫는다(다음 RUN_START·RESET·NODE_PURCHASE, 판 도중 앱 종료). */
     public void abandon(long endedSeq) {
         requireOpen();
         this.status = BattleRunStatus.ABANDONED;
