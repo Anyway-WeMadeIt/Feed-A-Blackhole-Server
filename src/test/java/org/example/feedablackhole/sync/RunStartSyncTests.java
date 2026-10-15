@@ -164,7 +164,7 @@ class RunStartSyncTests {
     }
 
     // 서버는 서버가 가진 산 노드로 계산한다: timer-01을 산 뒤의 판 시작은 Gold 18, 제한 시간 14초가 정답이다
-    // (계약 3.8 샘플 seq 4와 같은 값). Gold는 결산 처리기(W1-6)가 아직 없어서 DB에 직접 넣는다
+    // (계약 3.8 샘플 seq 4와 같은 값). Gold는 결산 로그를 거치지 않고 DB에 직접 넣는다
     @Test
     void serverComputesFromItsOwnProgress() throws Exception {
         Account account = newAccount();
@@ -205,7 +205,7 @@ class RunStartSyncTests {
         return new Account(((Number) JsonPath.read(me, "$.accountId")).longValue(), token);
     }
 
-    // 결산 처리기가 아직 없어서, 진행도의 Gold를 DB에 직접 정한다
+    // 결산 로그를 거치지 않고, 진행도의 Gold를 DB에 직접 정한다
     private void giveGold(Account account, long gold) {
         jdbcTemplate.update("UPDATE player_progress SET gold = ? WHERE account_id = ?", gold, account.id);
     }
