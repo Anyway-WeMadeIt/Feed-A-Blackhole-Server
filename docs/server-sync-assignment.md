@@ -42,6 +42,7 @@
 - **2026-10-14 변경(2)**: W2-3(연결 상태와 타이틀)을 C에서 A로 옮겨 완료했다. A 합계 16.5일 → 17.5일, C 합계 16.5일 → 15.5일이다. 위 일정 그림의 C 행 W2-3은 그대로 두었다(완료 표시만 이 문서의 작업 상세를 따른다).
 - **2026-10-14 변경(3)**: A의 W3-2(로그 모델과 생성기), W3-3(저장 포맷 2)이 클라이언트 `dev`에 병합되어 **완료**다(PR #79, 병합 `6a0a42f`). 클라이언트 작업이라 문서 반영이 늦었다. 칸별 처치 집계(W3-1)는 아직이어서, 결산 로그의 `kills`는 그 전까지 비어 있다(작업 상세 W3-2). 이로써 C의 W3-4는 선행(W2-3, W3-2, W3-3)이 모두 풀렸다.
 - **2026-10-14 변경(4)**: B의 W1-4(전투 규칙 이식)가 서버 `dev`에 병합되어 **완료**다(PR #20, 병합 `a171e1a`). B의 W1-5와 A의 W1-6은 실제 규칙으로 통합할 수 있고, W4-1b는 C의 W4-1a(기대값 표)만 남았다.
+- **2026-10-15 변경(6)**: B의 W1-3(노드 구매·새 게임 처리기)이 서버 `dev`에 병합되어 **완료**다(PR #22). M1의 서버 쪽 조건(W1-2, W1-3)이 갖춰졌다.
 - **2026-10-14 변경(5)**: C의 W3-1(칸별 처치 집계)이 클라이언트 `dev`에 병합되어 **완료**다(PR #88, 병합 `10cfa25`). 결산 로그의 `kills`·`goldenCritCount`·`goldenCritBonusGold`·`timeBonusCount`가 실제 값으로 채워진다. W4-2a의 선행(W3-0, W3-1, W3-2)이 모두 풀렸고, 클라이언트 쪽 M2 조건(W3-1)도 갖춰졌다.
 
 ## 3. 일정 개요
@@ -177,12 +178,17 @@ B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 
 - **결과**(B, PR #20 `feat/port-battle-rules`, 병합 `a171e1a`): `battle/rules/`에 `ContentBattleRules`(`BattleRules` 구현, `NodeTree`·`BattleContent`를 주입받는 상태 없는 `@Component`)를 두고, `upgradesFor`는 `NodeUpgradeValues`, `setupFor`는 `RunComposition`이 계산한다. 나머지는 `UpgradeChain`(스탯 합산), `MassRule`, `SizeRule`, `KindComposition`(`KindSetup`: 최대 크기, 나올 수 있는 색, 칸별 골드·경험치, 황금 치명 보너스), `StartSupply`(시작 공급: 보너스, 변환 사슬), `Rounding`(.5에서 0에서 먼 쪽 반올림)이다. 테스트는 샘플 묶음 기준(계약 C30)으로 약 50개(`battle/rules/*Tests`)다.
   - **남은 일**: C# 기대값 표와의 일치는 W4-1a가 표를 만든 뒤 W4-1b에서 확인한다. 이 작업으로 W1-5, W1-6의 실제 규칙 통합이 풀렸다.
 
-#### W1-3. 노드 구매·새 게임 처리기 (M, 2.5일)
+#### W1-3. 노드 구매·새 게임 처리기 (M, 2.5일) — 완료
 
 - **목표**: `NODE_PURCHASE`(`NodePurchase` 규칙 이식: 최대 랭크 → 노출 → 골드, `rank`·`cost` 일치)와 `RESET`(열린 판 포기, 진행도 초기화) 처리기.
 - **참조**: 계획서 6.2, 클라이언트 `Core/Nodes/NodePurchase.cs`, `NodeGraph.cs`, 서버 `NodeTree`, `NodeGraph`.
 - **완료 조건**: 처리기 단위 테스트(각 거부 사유 포함).
 - **선행**: A0-1, A0-5.
+- **결과**(B, PR #22 `feat/purchase-handler`): `sync/handler/`에 `NodePurchaseHandler`와 `ResetHandler`를 두었다. 둘 다 상태 없는 `@Component`이고 `LogHandlerRegistry`가 `type()`으로 찾는다.
+  - `NodePurchaseHandler`(`NodeTree` 주입): 검사 순서는 계약 3.6 표와 같다. `UNKNOWN_NODE` → `MAX_RANK_REACHED` → `NODE_HIDDEN` → `NOT_ENOUGH_GOLD` → `RANK_MISMATCH` → `COST_MISMATCH`. 검사를 모두 마친 뒤에만 `spendGold`·`setNodeRank`를 부르며, 차감 금액은 payload의 `cost`가 아니라 서버 콘텐츠의 비용이다.
+  - `ResetHandler`: 검증 없이 `resetProgress()`를 부르고 항상 적용한다(열린 판 포기와 노드 삭제는 `JpaSyncContext`가 한다).
+  - 테스트: `NodePurchaseHandlerTests` 16개(각 거부 사유와 검사 순서, 정상 구매, 2랭크 이후 구매), `ResetHandlerTests` 4개는 샘플 묶음과 `FakeSyncContext`로 DB 없이 돈다. `NodePurchaseSyncTests` 6개는 실제 처리기·엔진·DB로 구매 반영, 거부 후 멈춤, 산 순서 보존, 새 게임을 확인한다.
+  - **남은 일**: 없음. W1-7(옛 API 정리)과 W1-8(E2E)은 이 처리기를 쓸 수 있다.
 
 #### W1-5. 판 시작 처리기 (S, 1일)
 

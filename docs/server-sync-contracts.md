@@ -973,6 +973,7 @@ public enum SuspicionReason {
 | 엔티티·저장소 | `PlayerProgress`(열 3개 추가), `sync/entity/BattleRun`, `BattleRunStatus`, `SyncLogRecord`, `SyncLogResult`, `sync/repository/*` | 완료. 진행도·판 변경 메서드는 W1-2에서 필요한 만큼 더한다 |
 | 로그 타입·거부 코드·payload | `sync/log/LogType`, `RejectCode`, `sync/log/payload/*` | 완료 |
 | 처리기 경계 | `sync/handler/LogHandler`, `HandleResult`, `SyncContext`, `OpenRun`, `SuspicionReason` | 완료(구현 없음) |
+| 처리기 구현(NODE_PURCHASE, RESET) | `sync/handler/NodePurchaseHandler`, `ResetHandler` | **구현 완료**(W1-3, B). 테스트: `NodePurchaseHandlerTests`, `ResetHandlerTests`, `NodePurchaseSyncTests` |
 | 테스트 | `SyncSchemaTests`(6개) | 통과 |
 
 - `sync_log` 테이블의 엔티티 이름은 `SyncLogRecord`다(로그 자체와 구분).
