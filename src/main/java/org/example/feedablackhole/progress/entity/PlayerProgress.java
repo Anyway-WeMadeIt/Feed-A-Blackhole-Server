@@ -43,14 +43,9 @@ public class PlayerProgress extends BaseTimeEntity {
     @Column(nullable = false)
     private long gold;
 
-    // 도달한 이정표의 수. 0 이상이고, 저장으로는 줄지 않는다(처음으로 되돌리는 reset만 예외).
+    // 도달한 이정표의 수. 0 이상이고, 동기화로는 줄지 않는다(RESET 로그만 처음으로 되돌린다).
     @Column(name = "growth_stage", nullable = false)
     private int growthStage;
-
-    // 진행 상태를 바꿀 때마다 1 오른다. 저장 요청이 읽은 버전(baseRevision)과 같을 때만 저장을 받아서,
-    // 다른 요청이 먼저 저장한 것을 덮어쓰지 않게 한다.
-    @Column(nullable = false)
-    private long revision;
 
     // 마지막으로 반영한 동기화 로그의 seq. 처음은 0이고, 다음 로그는 이 값 + 1이어야 한다(docs/server-sync-contracts.md 4.2).
     @Column(name = "last_applied_seq", nullable = false)
@@ -64,33 +59,19 @@ public class PlayerProgress extends BaseTimeEntity {
     @Column(name = "suspicious_count", nullable = false)
     private int suspiciousCount;
 
-    /** 처음 상태(Gold 0, 성장도 0, revision 0)의 진행 상태. */
+    /** 처음 상태(Gold 0, 성장도 0)의 진행 상태. */
     public static PlayerProgress initial(Account account) {
         PlayerProgress progress = new PlayerProgress();
         progress.account = account;
         progress.gold = 0;
         progress.growthStage = INITIAL_GROWTH_STAGE;
-        progress.revision = 0;
         progress.lastAppliedSeq = 0;
         progress.openRunId = null;
         progress.suspiciousCount = 0;
         return progress;
     }
 
-    /** 새 값으로 바꾸고 revision을 올린다. 값이 같아도 올린다(저장이 일어났다는 기록). */
-    public void update(long gold, int growthStage) {
-        this.gold = gold;
-        this.growthStage = growthStage;
-        this.revision++;
-    }
-
-    /** 새 게임: 처음 상태로 되돌리고 revision을 올린다. */
-    public void reset() {
-        update(0, INITIAL_GROWTH_STAGE);
-    }
-
     // ---------- 동기화(로그 적용) ----------
-    // 값을 바꾸는 메서드는 revision도 올린다. 옛 저장 API(W1-7에서 제거)가 동기화로 바뀐 진행도를 덮어쓰지 않게 한다.
 
     /** Gold를 바꾼다(0 이상). */
     public void changeGold(long gold) {
@@ -98,7 +79,6 @@ public class PlayerProgress extends BaseTimeEntity {
             throw new IllegalArgumentException("Gold는 0 이상이다: " + gold);
         }
         this.gold = gold;
-        this.revision++;
     }
 
     /** 성장도를 바꾼다(0 이상). */
@@ -107,7 +87,6 @@ public class PlayerProgress extends BaseTimeEntity {
             throw new IllegalArgumentException("성장도는 0 이상이다: " + growthStage);
         }
         this.growthStage = growthStage;
-        this.revision++;
     }
 
     /** 로그 하나를 반영했다. seq는 지금 값 + 1이어야 한다. */
