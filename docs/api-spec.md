@@ -4,7 +4,7 @@
 
 - 상태: **초안 v0.7** (2026-10-12). 설계와 근거는 [server-sync-plan.md](server-sync-plan.md)(이하 "계획서"), 담당과 순서는 [server-sync-assignment.md](server-sync-assignment.md), 콘텐츠 형식과 내부 인터페이스는 [server-sync-contracts.md](server-sync-contracts.md)에 있다.
 - v0.6과의 차이: 동기화를 **계정 단위 순번(`seq`)을 가진 로그** 방식으로 바꿨다. `batchId`·`baseRevision`·`BASE_MISMATCH`·`claimed`를 없앴고, 전투는 **판 시작(`RUN_START`)과 결산(`SETTLEMENT`) 두 로그**로 나눴다. `revision`은 `lastAppliedSeq`로 대체한다.
-- 구현 현황: 인증 전체(게스트 등록·로그인, 토큰 갱신·로그아웃), `GET /me`, 진행 데이터(불러오기·저장·초기화), 공통 오류 응답이 구현되어 있다. 이 중 **저장(`PUT /me/progress`)과 초기화(`POST /me/progress/reset`)는 검증을 우회하는 경로이므로 제거한다(W1-7).** 동기화 API는 구현 전이다.
+- 구현 현황: 인증 전체(게스트 등록·로그인, 토큰 갱신·로그아웃), `GET /me`, 진행 데이터 불러오기(`GET /me/progress`), 공통 오류 응답이 구현되어 있다. 검증을 우회하던 저장(`PUT /me/progress`)과 초기화(`POST /me/progress/reset`)는 제거했다(W1-7).
 - 필드 타입·범위·필수 여부, 오류를 내는 위치, 한도, 거부 코드의 확정본은 [계약 3장](server-sync-contracts.md#3-로그동기화-json)이다. 이 문서에서 **(A0 확정)** 으로 표시한 값은 아직 잠정값이다.
 
 ## 설계 원칙
@@ -46,7 +46,7 @@
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | 지원하지 않는 `Content-Type`. |
 | `INTERNAL_ERROR` | 500 | 서버 내부 오류. 상세는 서버 로그에만 남기고 응답에는 담지 않는다. |
 
-현재 코드에 있는 `STALE_PROGRESS`, `PROGRESS_REGRESSION`(409)은 저장 API와 함께 제거한다(W1-7).
+`STALE_PROGRESS`, `PROGRESS_REGRESSION`(409)은 저장 API와 함께 제거했다(W1-7).
 
 ## 인증
 
@@ -184,7 +184,7 @@ API 호출 중 401 UNAUTHORIZED → POST /auth/refresh 후 같은 요청을 한 
 
 서버의 진행 상태를 불러온다. 위 형식으로 응답한다. 클라이언트는 보통 로그 없는 `POST /me/sync`로 같은 정보를 받으므로, 이 API는 진단·확인용이다.
 
-### 제거하는 API
+### 제거한 API
 
 | | 경로 | 대체 |
 |---|---|---|

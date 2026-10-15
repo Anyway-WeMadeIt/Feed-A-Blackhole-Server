@@ -1,6 +1,7 @@
 package org.example.feedablackhole.support;
 
 import com.jayway.jsonpath.JsonPath;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -9,9 +10,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Unity 클라이언트를 흉내 내는 테스트용 클라이언트. 실제 HTTP로 서버에 말하고, 요청은 서버의 DTO 클래스를 쓰지 않고
@@ -39,13 +38,14 @@ public final class FakeClient {
 
     // 메모리에만 있는 값
     private String accessToken;
-    private long revision;
 
     public FakeClient(String baseUrl) {
         this.baseUrl = baseUrl;
     }
 
-    /** 이 클라이언트가 보낸 요청의 기록. "METHOD 경로 -> 상태 코드" 형식이다. */
+    /**
+     * 이 클라이언트가 보낸 요청의 기록. "METHOD 경로 -> 상태 코드" 형식이다.
+     */
     public List<String> log() {
         return List.copyOf(log);
     }
@@ -66,12 +66,9 @@ public final class FakeClient {
         return accessToken;
     }
 
-    /** 마지막으로 받은 진행 상태의 revision. 저장할 때 baseRevision으로 보낸다. */
-    public long revision() {
-        return revision;
-    }
-
-    /** 앱을 껐다 켠 클라이언트: 기기에 저장된 값만 이어받고 액세스 토큰과 revision은 없다. */
+    /**
+     * 앱을 껐다 켠 클라이언트: 기기에 저장된 값만 이어받고 액세스 토큰은 없다.
+     */
     public FakeClient restartedApp() {
         FakeClient next = new FakeClient(baseUrl);
         next.guestId = guestId;
@@ -80,7 +77,9 @@ public final class FakeClient {
         return next;
     }
 
-    /** 같은 계정으로 로그인하는 다른 기기: 자격증명(guestId, guestSecret)만 같고 토큰은 따로 받는다. */
+    /**
+     * 같은 계정으로 로그인하는 다른 기기: 자격증명(guestId, guestSecret)만 같고 토큰은 따로 받는다.
+     */
     public FakeClient anotherDevice() {
         FakeClient next = new FakeClient(baseUrl);
         next.guestId = guestId;
@@ -155,45 +154,18 @@ public final class FakeClient {
 
     // ---------- 진행 데이터 ----------
 
-    /** 진행 상태를 불러오고, 성공하면 응답의 revision을 기억한다. */
+    /**
+     * 진행 상태를 불러온다(GET /me/progress).
+     */
     public Response loadProgress() {
-        return remember(call("GET", "/me/progress", null));
-    }
-
-    /** 기억한 revision을 baseRevision으로 저장한다. 성공(200)하면 응답의 revision을 기억한다. nodes는 "노드ID:Rank" 형식. */
-    public Response saveProgress(long gold, int growthStage, String... nodes) {
-        return saveProgressBasedOn(revision, gold, growthStage, nodes);
-    }
-
-    public Response saveProgressBasedOn(long baseRevision, long gold, int growthStage, String... nodes) {
-        return remember(call("PUT", "/me/progress", progressJson(baseRevision, gold, growthStage, nodes)));
-    }
-
-    public Response resetProgress() {
-        return remember(call("POST", "/me/progress/reset", null));
-    }
-
-    private Response remember(Response response) {
-        if (response.status() == 200) {
-            revision = response.number("$.revision");
-        }
-        return response;
-    }
-
-    public static String progressJson(long baseRevision, long gold, int growthStage, String... nodes) {
-        String nodesJson = Arrays.stream(nodes)
-                .map(node -> {
-                    int colon = node.lastIndexOf(':');
-                    return "{\"nodeId\":\"%s\",\"rank\":%s}".formatted(node.substring(0, colon), node.substring(colon + 1));
-                })
-                .collect(Collectors.joining(",", "[", "]"));
-        return "{\"baseRevision\":%d,\"gold\":%d,\"growthStage\":%d,\"nodes\":%s}"
-                .formatted(baseRevision, gold, growthStage, nodesJson);
+        return call("GET", "/me/progress", null);
     }
 
     // ---------- 저수준: 요청 한 건 ----------
 
-    /** 헤더를 직접 정해 보낸다(Unity가 보내는 헤더 변형을 재현하거나 잘못된 요청을 만들 때). */
+    /**
+     * 헤더를 직접 정해 보낸다(Unity가 보내는 헤더 변형을 재현하거나 잘못된 요청을 만들 때).
+     */
     public Response sendRaw(String method, String path, String body, String... headers) {
         HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(baseUrl + API + path))
                 .timeout(Duration.ofSeconds(10))
@@ -234,7 +206,9 @@ public final class FakeClient {
         }
     }
 
-    /** 서버의 응답. 본문은 JSON 경로(JsonPath)로 읽는다. */
+    /**
+     * 서버의 응답. 본문은 JSON 경로(JsonPath)로 읽는다.
+     */
     public static final class Response {
 
         private final HttpResponse<String> raw;
@@ -268,7 +242,9 @@ public final class FakeClient {
             return JsonPath.read(raw.body(), path);
         }
 
-        /** 오류 응답의 code. 오류 형식이 아니면 null. */
+        /**
+         * 오류 응답의 code. 오류 형식이 아니면 null.
+         */
         public String errorCode() {
             try {
                 return JsonPath.read(raw.body(), "$.error.code");

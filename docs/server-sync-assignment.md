@@ -44,6 +44,7 @@
 - **2026-10-14 변경(4)**: B의 W1-4(전투 규칙 이식)가 서버 `dev`에 병합되어 **완료**다(PR #20, 병합 `a171e1a`). B의 W1-5와 A의 W1-6은 실제 규칙으로 통합할 수 있고, W4-1b는 C의 W4-1a(기대값 표)만 남았다.
 - **2026-10-15 변경(6)**: B의 W1-3(노드 구매·새 게임 처리기)이 서버 `dev`에 병합되어 **완료**다(PR #22). M1의 서버 쪽 조건(W1-2, W1-3)이 갖춰졌다.
 - **2026-10-15 변경(7)**: B의 W1-5(판 시작 처리기)가 완료되었다(`feat/run-start`). 네 가지 로그 타입의 처리기가 모두 갖춰져 W1-8(E2E와 CI)을 시작할 수 있다.
+- **2026-10-15 변경(8)**: B의 W1-7(옛 API 정리)이 완료되었다(`feat/remove-old-progress-api`). `revision` 열 제거(V4)는 A가 같은 브랜치에서 맡았다. W1-8은 `FakeClient`의 옛 메서드가 이미 없는 상태에서 시작한다.
 - **2026-10-14 변경(5)**: C의 W3-1(칸별 처치 집계)이 클라이언트 `dev`에 병합되어 **완료**다(PR #88, 병합 `10cfa25`). 결산 로그의 `kills`·`goldenCritCount`·`goldenCritBonusGold`·`timeBonusCount`가 실제 값으로 채워진다. W4-2a의 선행(W3-0, W3-1, W3-2)이 모두 풀렸고, 클라이언트 쪽 M2 조건(W3-1)도 갖춰졌다.
 
 ## 3. 일정 개요
@@ -211,10 +212,17 @@ B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 
   - 테스트: `RunStartHandlerTests` 15개(샘플 묶음과 `FakeSyncContext`로 DB 없이), `RunStartSyncTests` 7개(실제 처리기·엔진·DB: 판 저장, 의심 사유 저장, 의심 후 계속 진행, 열린 판 포기, 중복 `runId`, 서버 진행도 기준 계산).
   - **남은 일**: 없음. W1-8은 이 처리기를 쓸 수 있다.
 
-#### W1-7. 옛 API 정리 (S, 1일)
+#### W1-7. 옛 API 정리 (S, 1일) — 완료
 
 - **목표**: `PUT /me/progress`, `POST /me/progress/reset` 제거, `GET /me/progress`에 `lastAppliedSeq` 추가, 관련 테스트 정리.
 - **선행**: W1-2.
+- **결과**(B, `feat/remove-old-progress-api`; V4는 A):
+  - 제거: `ProgressController`의 PUT·reset, `SaveProgressRequest`, `ProgressService.save`·`reset`, `ErrorCode`의 `STALE_PROGRESS`·`PROGRESS_REGRESSION`, `PlayerNodeRankRepository.deleteAllByAccountId`(새 게임은 `JpaSyncContext`가 행을 하나씩 지운다).
+  - `ProgressResponse`는 `revision` 대신 `lastAppliedSeq`를 낸다(동기화 응답의 `progress`와 같은 형식).
+  - `V4__drop_progress_revision.sql`로 `player_progress.revision` 열을 지웠다(계약 C21). `PlayerProgress`에서 `revision` 필드와, 호출처가 없어진 `update`·`reset`을 지웠다.
+  - 테스트: `ProgressApiTests`는 조회 중심으로 바꾸고 옛 API 부재(405/404)와 동기화 응답과의 일치를 본다. `ProgressSchemaTests`는 `revision` 열이 없음을 확인한다. `FakeClient`에서 `saveProgress*`·`resetProgress`·`revision()`을 지웠고, `Stage1ClientFlowTests`에서 옛 저장 전용 E2E를 지웠다.
+  - **W1-8 참고**: 동시 요청 테스트의 기준으로 적었던 `ofTwoConcurrentSavesWithTheSameBaseRevisionExactlyOneWins`는 지워졌다. 동시 요청 도우미(`runTogether`)와 `startedClient()`는 `Stage1ClientFlowTests`에 그대로 있고, 옛 테스트는 git 이력(`01e9797`, W1-7 이전 `dev`)에서 볼 수 있다.
+  - **남은 일**: 없음.
 
 #### W4-1b. 이식 일치 테스트 (서버) (S, 1일)
 
@@ -234,7 +242,7 @@ B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 
   - `Response sync(String requestJson)`: `call("POST", "/me/sync", requestJson)`. `call`을 거치므로 401이면 갱신 후 한 번 재시도하는 흐름이 그대로 적용된다.
   - `Response sync(String... logJsons)`: 로그 객체 글자들을 `{"logs":[...]}`로 이어 붙여 보낸다. **로그 글자는 바꾸지 않고 이어 붙이기만 한다**(계약 3.1: 재전송해도 같은 글자).
   - 응답 편의: 거부 여부는 `rejected`가 `null`인지로 본다(`response.read("$.rejected")`). `appliedThroughSeq`, `rejected.code`, `progress.*`는 기존 `Response`의 JsonPath로 읽는다.
-  - 옛 진행 API용 `saveProgress`, `saveProgressBasedOn`, `resetProgress`, `revision`은 **이 작업에서 지우지 않는다**(W1-7의 몫, 아래 참고).
+  - 옛 진행 API용 `saveProgress`, `saveProgressBasedOn`, `resetProgress`, `revision`은 W1-7에서 이미 지웠다(아래 참고).
 - `SyncSamples`(새 지원 클래스): `src/test/resources/sync-samples/`의 파일을 읽는 도우미.
   - `request()`는 `sync-request.json`의 로그 6개를 **원본 글자 그대로** 잘라서 돌려준다(예: `logs(1, 3)` = seq 1~3). 시나리오마다 샘플을 복사해 값을 손으로 고치지 않는다.
   - 잘라 내기는 JSON을 읽어 `logs[i]`를 글자로 되돌리면 된다(Jackson 3, `tools.jackson`). 이 도우미는 테스트 코드이므로 `FakeClient`와 달리 Jackson을 써도 된다.
@@ -262,8 +270,8 @@ B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 
 | 8 | 콘텐츠 버전 | 한 로그의 `contentVersion`만 다르게 | `CONTENT_VERSION_MISMATCH`로 거부, 앞의 로그는 반영 |
 | 9 | 빈 요청 | `sync-request-empty.json` | 진행도만 돌아온다(`appliedThroughSeq` = `lastAppliedSeq`, 거부 없음) |
 
-- 동시 요청 도우미(`runTogether`)와 `startedClient()`는 `Stage1ClientFlowTests`의 것을 참고해 새 클래스에 만든다(그쪽은 W1-7이 손대므로 공용으로 뽑지 않는다).
-- 동시 요청 테스트는 한 번 통과로 끝내지 않는다. 라운드를 반복하고(15회) 실패하면 라운드 번호가 나오게 `as("라운드 %d", round)`를 붙인다. 기준 구현은 `ofTwoConcurrentSavesWithTheSameBaseRevisionExactlyOneWins`다.
+- 동시 요청 도우미(`runTogether`)와 `startedClient()`는 `Stage1ClientFlowTests`의 것을 참고해 새 클래스에 만든다(공용으로 뽑지 않는다).
+- 동시 요청 테스트는 한 번 통과로 끝내지 않는다. 라운드를 반복하고(15회) 실패하면 라운드 번호가 나오게 `as("라운드 %d", round)`를 붙인다. 기준 구현은 `Stage1ClientFlowTests.ofTwoConcurrentRefreshesWithTheSameTokenExactlyOneSucceeds`다(옛 저장 동시성 테스트는 W1-7에서 지웠다).
 - 규칙 값(Gold·Rank)은 샘플에서 정한 숫자를 쓴다. 표의 숫자가 구현과 다르면 테스트를 맞추지 말고 **샘플·처리기 중 어느 쪽이 틀렸는지 먼저 확인**한다(샘플은 계약 3.8의 기준이다).
 
 **W1-7과의 경계**

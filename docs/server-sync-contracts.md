@@ -848,7 +848,7 @@ CREATE TABLE sync_log (
 );
 ```
 
-- `revision` 열은 옛 저장 API를 없앨 때(W1-7) 함께 지운다(V4, A가 작성).
+- `revision` 열은 옛 저장 API를 없앨 때(W1-7) 함께 지웠다(`V4__drop_progress_revision.sql`, A가 작성).
 - `battle_run`은 계정 안에서 `run_id`가 유일하다. 다른 계정과 겹쳐도 상관없다.
 - `NOT_PROCESSED`는 거부된 로그 뒤에 있어 처리하지 않은 로그다.
 
@@ -951,7 +951,7 @@ public enum SuspicionReason {
 | C18 | 처리기는 `SyncContext`로만 진행도를 읽고 바꾸며, 거부할 때는 바꾸지 않는다 | 처리기가 저장소와 트랜잭션을 몰라도 된다. 한 로그 안에서 일부만 반영되는 일이 없다 |
 | C19 | 요청 하나가 트랜잭션 하나. 거부는 커밋, 예상하지 못한 예외는 전체 롤백(500) | 거부 직전까지는 반영하고, 버그로 진행도가 어긋나는 일은 없게 한다 |
 | C20 | `battle_run`의 시작 Gold·성장도는 서버 진행도 값으로 적는다 | 결산 검증의 기준은 서버 값이다 |
-| C21 | `revision` 열은 W1-7(옛 API 제거) 때 지운다 | 옛 API와 그 테스트가 W1-7 전까지 그대로 돌게 한다 |
+| C21 | `revision` 열은 W1-7(옛 API 제거) 때 지운다(**완료**, V4) | 옛 API와 그 테스트가 W1-7 전까지 그대로 돌게 한다 |
 | C22 | `timeLimitSeconds` 비교 허용 오차 0.001초 | 같은 float 계산이면 같은 값이 나오므로 작게 둔다 |
 | C31 | `NODE_PURCHASE`가 열린 판이 있을 때 오면, 구매 처리기가 구매를 적용하면서 그 판을 **포기로 닫는다**(보상 없음, 구매가 거부되면 닫지 않는다). `RESET`·`RUN_START`와 같은 규칙이다 | 결산 검증(S2~S9)은 결산 시점의 노드 랭크로 판 설정을 계산한다. 판 도중 구매가 끼면 더 강해진 노드 기준으로 검증이 느슨해지는데, 구매가 판을 닫으면 그 판의 결산은 `RUN_NOT_OPEN`이라 이 경로가 막힌다. 거부와 달리 정상 플레이어의 구매가 사라지지 않는다. 정상 클라이언트는 결산 로그가 구매 로그보다 먼저 만들어지므로 영향이 없다 |
 
@@ -960,7 +960,7 @@ public enum SuspicionReason {
 - 위치: `sync/controller/SyncController`, `sync/service/`(`SyncRequestReader` 요청 전체 400·413, `LogParser` 로그 형식, `SyncService` 엔진, `JpaSyncContext`, `LogHandlerRegistry`), `sync/dto/`
 - 요청 본문은 글자로 받아 직접 읽는다. 로그 하나의 형식 오류를 요청 전체의 400이 아니라 그 로그의 `MALFORMED_LOG`로 처리하기 위해서다.
 - 서버 콘텐츠 버전은 `ServerContentVersion` 빈이 준다. 시작할 때 검증한 묶음 목차의 `contentVersion`(`ContentManifest`, W0-3)이다(`sync/config/SyncConfig`).
-- 진행도가 바뀌면 옛 저장 API와 섞이지 않도록 `revision`도 오른다(W1-7에서 제거).
+- 옛 저장 API와 `revision`은 W1-7에서 제거했다(V4). 진행도 변경은 `lastAppliedSeq`로만 추적한다.
 - 새 게임은 산 노드 행을 하나씩 지운다. 벌크 삭제가 영속성 컨텍스트를 비워 잠근 진행도 엔티티까지 떼어 내기 때문이다.
 - 테스트(`SyncApiTests`, 19개)는 빈으로 등록하지 않은 테스트용 처리기로 엔진의 몫만 본다(실제 처리기가 생겨도 겹치지 않는다).
 
