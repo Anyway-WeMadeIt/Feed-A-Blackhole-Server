@@ -975,6 +975,7 @@ public enum SuspicionReason {
 | 로그 타입·거부 코드·payload | `sync/log/LogType`, `RejectCode`, `sync/log/payload/*` | 완료 |
 | 처리기 경계 | `sync/handler/LogHandler`, `HandleResult`, `SyncContext`, `OpenRun`, `SuspicionReason` | 완료(구현 없음) |
 | 처리기 구현(NODE_PURCHASE, RESET) | `sync/handler/NodePurchaseHandler`, `ResetHandler` | **구현 완료**(W1-3, B). 테스트: `NodePurchaseHandlerTests`, `ResetHandlerTests`, `NodePurchaseSyncTests` |
+| 처리기 구현(RUN_START) | `sync/handler/RunStartHandler` | **구현 완료**(W1-5, B). 테스트: `RunStartHandlerTests`, `RunStartSyncTests` |
 | 테스트 | `SyncSchemaTests`(6개) | 통과 |
 | 결산 처리기(W1-6) | `sync/handler/SettlementHandler`, `SettlementValidator`, 테스트 `SettlementHandlerTests`(31개) | 완료 |
 

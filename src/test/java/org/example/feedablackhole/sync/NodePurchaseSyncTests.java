@@ -36,7 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 단위 테스트(NodePurchaseHandlerTests)는 가짜 진행도로 규칙을 보고, 여기서는 엔진이 처리기를 부르고 진행도를 저장하는 흐름을 본다.
  * 스프링 테스트는 샘플 콘텐츠 묶음 위에서 돈다(build.gradle의 test 설정).
  *
- * <p>결산 처리기(W1-6)가 아직 없어서 Gold는 테스트가 DB에 직접 넣는다. 테스트마다 새 계정을 만들어 서로 영향을 주지 않는다.
+ * <p>Gold는 결산 로그를 거치지 않고 테스트가 DB에 직접 넣는다. 테스트마다 새 계정을 만들어 서로 영향을 주지 않는다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -185,7 +185,7 @@ class NodePurchaseSyncTests {
         return new Account(((Number) JsonPath.read(me, "$.accountId")).longValue(), token);
     }
 
-    // 결산 처리기가 아직 없어서, 진행도의 Gold를 DB에 직접 정한다
+    // 결산 로그를 거치지 않고, 진행도의 Gold를 DB에 직접 정한다
     private void giveGold(Account account, long gold) {
         jdbcTemplate.update("UPDATE player_progress SET gold = ? WHERE account_id = ?", gold, account.id);
     }
