@@ -143,4 +143,91 @@ class NodePurchaseHandlerTests {
 
         assertThat(rejectCode(result)).isEqualTo(RejectCode.NODE_HIDDEN);
     }
+
+    // 정상 구매: 서버 비용(timer-01은 2)만큼 Gold를 쓰고 Rank를 1로 올린다
+    @Test
+    void validPurchaseSpendsGoldAndRaisesRank() {
+        FakeSyncContext context = new FakeSyncContext().withGold(20);
+
+        HandleResult result = handler.handle(new NodePurchasePayload("timer-01", 1, 2L), context);
+
+        assertThat(result).isEqualTo(HandleResult.applied());
+        assertThat(context.gold()).isEqualTo(18);
+        assertThat(context.nodeRanks()).containsEntry("timer-01", 1);
+    }
+
+    // 이미 산 노드의 다음 Rank를 살 때는 현재 Rank + 1이다(breaker.speed-12는 최대 10, Rank마다 비용 500조)
+    @Test
+    void secondRankIsPurchasedAsCurrentPlusOne() {
+        long cost = 500_000_000_000_000L;
+        FakeSyncContext context = new FakeSyncContext()
+                .withGold(2 * cost)
+                .withNode("star.size-03", 1)
+                .withNode("breaker.speed-12", 1);
+
+        HandleResult result = handler.handle(new NodePurchasePayload("breaker.speed-12", 2, cost), context);
+
+        assertThat(result).isEqualTo(HandleResult.applied());
+        assertThat(context.gold()).isEqualTo(cost);
+        assertThat(context.nodeRanks()).containsEntry("breaker.speed-12", 2);
+    }
+
+    // 보낸 rank가 현재 Rank + 1이 아니면 RANK_MISMATCH로 거부한다(Rank를 건너뛰는 구매)
+    @Test
+    void skippedRankIsRejectedAsRankMismatch() {
+        FakeSyncContext context = new FakeSyncContext().withGold(100);
+
+        HandleResult result = handler.handle(new NodePurchasePayload("timer-01", 2, 2L), context);
+
+        assertThat(rejectCode(result)).isEqualTo(RejectCode.RANK_MISMATCH);
+        assertThat(context.changes()).isZero();
+        assertThat(context.gold()).isEqualTo(100);
+    }
+
+    // 이미 산 Rank를 다시 보내도(rank가 현재와 같음) RANK_MISMATCH다
+    @Test
+    void repeatedRankIsRejectedAsRankMismatch() {
+        long cost = 500_000_000_000_000L;
+        FakeSyncContext context = new FakeSyncContext()
+                .withGold(2 * cost)
+                .withNode("star.size-03", 1)
+                .withNode("breaker.speed-12", 1);
+
+        HandleResult result = handler.handle(new NodePurchasePayload("breaker.speed-12", 1, cost), context);
+
+        assertThat(rejectCode(result)).isEqualTo(RejectCode.RANK_MISMATCH);
+        assertThat(context.changes()).isZero();
+    }
+
+    // 보낸 cost가 서버의 다음 Rank 비용과 다르면 COST_MISMATCH로 거부한다(비용을 깎아 보내는 조작)
+    @Test
+    void wrongCostIsRejectedAsCostMismatch() {
+        FakeSyncContext context = new FakeSyncContext().withGold(100);
+
+        HandleResult result = handler.handle(new NodePurchasePayload("timer-01", 1, 1L), context);
+
+        assertThat(rejectCode(result)).isEqualTo(RejectCode.COST_MISMATCH);
+        assertThat(context.changes()).isZero();
+        assertThat(context.gold()).isEqualTo(100);
+    }
+
+    // Gold 부족이 rank·cost 불일치보다 먼저 걸린다(순서: ... -> Gold -> rank -> cost)
+    @Test
+    void notEnoughGoldIsCheckedBeforeRankAndCost() {
+        FakeSyncContext context = new FakeSyncContext().withGold(1);
+
+        HandleResult result = handler.handle(new NodePurchasePayload("timer-01", 5, 99L), context);
+
+        assertThat(rejectCode(result)).isEqualTo(RejectCode.NOT_ENOUGH_GOLD);
+    }
+
+    // rank 불일치가 cost 불일치보다 먼저 걸린다(순서: rank -> cost)
+    @Test
+    void rankMismatchIsCheckedBeforeCostMismatch() {
+        FakeSyncContext context = new FakeSyncContext().withGold(100);
+
+        HandleResult result = handler.handle(new NodePurchasePayload("timer-01", 5, 99L), context);
+
+        assertThat(rejectCode(result)).isEqualTo(RejectCode.RANK_MISMATCH);
+    }
 }
