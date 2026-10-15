@@ -47,6 +47,7 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 | D5 | 리전 | `ap-northeast-2`(서울) | |
 | D6 | 환경 수 | 운영 1개 | 데모·평가용이면 충분. |
 | D7 | 비용 한도 | 월 예산 알림 설정 후 시작 | 현재 계정은 **무료 플랜(크레딧 기반)** 이다. 크레딧이 소진되거나 무료 기간이 끝나면 서비스가 중단될 수 있으므로 크레딧 잔액을 주기적으로 확인한다(2026-10-15 기준 잔액 약 US$157). |
+| D8 | CPU 아키텍처 | **x86_64** (이미지는 `linux/amd64`로 빌드, EC2는 `t3` 계열) | ARM(Graviton, `t4g`)은 시간당 약 20% 저렴하지만 이미지를 `linux/arm64`로 빌드해야 해서 CI에 ARM 러너나 멀티 플랫폼 빌드가 필요하다. 첫 배포는 변수를 줄이기 위해 x86으로 가고, 안정화 후 전환을 검토한다. Dockerfile은 두 아키텍처 모두에서 빌드 가능하다. |
 
 ## 5. 단계별 작업
 
@@ -61,12 +62,13 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 - 검증 결과(2026-10-15): 루트가 아닌 IAM 사용자로 로그인되고 예산 알림이 설정되어 있다.
 
 ### 1단계. 서버를 배포 가능한 상태로 만들기 (코드 변경, PR 1개)
-- [ ] `spring-boot-starter-actuator` 추가 + `/actuator/health`만 인증 없이 열기(Security 설정 확인 필요), 상세 정보는 비공개
-- [ ] 운영용 설정 정리: `server.shutdown=graceful`, 로그 레벨, 필요 시 `application-prod.properties`
-- [ ] RDS 접속용 JDBC URL 파라미터 확인(`useSSL`, `serverTimezone`/UTC 등) — `DB_URL` 형식 확정
-- [ ] `JWT_SECRET` 운영용 값 신규 생성(개발용과 다른 값)
-- [ ] `Dockerfile` 작성: 멀티 스테이지(빌드: JDK 21 + `bootJar` → 실행: JRE 21 + jar), 비루트 사용자로 실행, `.dockerignore`로 `.env`·`.git`·`.idea`·`build/` 제외(비밀값이 이미지에 들어가지 않게)
-- 검증: 로컬에서 `docker build` 후 환경변수만 주입(`--env-file`)해 컨테이너를 띄우고(DB는 로컬 compose MySQL) 헬스체크가 `UP`을 반환한다. `docker history`/이미지 내부에 `.env`가 없음을 확인한다.
+- [x] `spring-boot-starter-actuator` 추가 + `/actuator/health`만 인증 없이 열기, 상세 정보는 비공개
+- [x] 운영용 설정 정리: `server.shutdown=graceful`(대기 20초), `forward-headers-strategy=framework`. 별도 `application-prod.properties`는 필요하지 않아 만들지 않았다.
+- [ ] RDS 접속용 JDBC URL 파라미터 확인(`sslMode`, 시간대 등) — RDS 엔드포인트가 정해지는 2~3단계에서 `DB_URL` 형식을 확정한다.
+- [ ] `JWT_SECRET` 운영용 값 신규 생성(개발용과 다른 값) — 저장소에 남기지 않도록 2단계에서 Parameter Store에 직접 넣을 때 만든다.
+- [x] `Dockerfile` 작성: 멀티 스테이지(빌드: JDK 21 + `bootJar` → 실행: JRE 21 + jar), 비루트 사용자로 실행, `.dockerignore`로 `.env`·`.git`·`.idea`·`build/` 제외(비밀값이 이미지에 들어가지 않게)
+- 검증 결과(2026-10-15, 로컬): `./gradlew build` 통과(테스트 361개). 이미지를 임시 MySQL에 붙여 실행해 Flyway V1~V3 적용과 헬스체크 `UP`을 확인했고, DB를 끊으면 503(`DOWN`), 종료 신호에는 graceful shutdown 로그를 확인했다. 이미지에 `.env`가 없고 비루트로 실행됨을 확인했다.
+- 참고: DB가 끊긴 상태에서 헬스체크가 `DOWN`을 응답하기까지 약 30초가 걸린다(DB 연결 대기 기본값). 6단계의 배포 스크립트는 헬스체크 타임아웃을 40초 이상으로 잡는다.
 
 ### 2단계. AWS 인프라 수동 구축 (콘솔로 한 번 직접 만들어 본다)
 처음에는 콘솔로 손수 만들어 각 구성요소의 역할을 이해하고, 안정되면 IaC(Terraform 등)는 선택 과제로 둔다.
@@ -74,7 +76,7 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 - [ ] 보안그룹 2개: `sg-app`(80/443 전체 허용, SSH는 없음 또는 내 IP만), `sg-db`(3306은 `sg-app`에서만 허용)
 - [ ] RDS: MySQL **8.4**, 인스턴스는 소형(예: db.t4g.micro), 퍼블릭 액세스 **끔**, 자동 백업 켬, 파라미터 그룹에서 문자셋 `utf8mb4`·시간대 UTC
 - [ ] ECR 프라이빗 리포지토리 생성(이미지 태그 변경 불가 옵션, 푸시 시 스캔, 수명 주기 규칙으로 오래된 이미지 정리하되 롤백용 최근 N개는 유지)
-- [ ] EC2: Amazon Linux 2023, 소형 인스턴스, `sg-app` 연결, **인스턴스 프로파일(IAM 역할)** 에 SSM 접근 권한, Parameter Store 읽기 권한, **ECR pull 권한** 부여, 탄력적 IP 연결. Docker 설치
+- [ ] EC2: Amazon Linux 2023, **x86_64 계열 소형 인스턴스(예: `t3.small`, ARM인 `t4g`는 사용하지 않는다)**, `sg-app` 연결, **인스턴스 프로파일(IAM 역할)** 에 SSM 접근 권한, Parameter Store 읽기 권한, **ECR pull 권한** 부여, 탄력적 IP 연결. Docker 설치
 - [ ] Parameter Store(SecureString): `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`
 - 검증: EC2에서 `mysql` 클라이언트로 RDS에 접속되고, 내 PC에서는 RDS에 접속되지 않는다. EC2에서 `aws ecr get-login-password`로 ECR 로그인이 된다.
 
