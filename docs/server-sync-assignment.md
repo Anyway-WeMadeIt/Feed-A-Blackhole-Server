@@ -217,8 +217,75 @@ B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 
 
 #### W1-8. E2E와 CI (M, 2.5일)
 
-- **목표**: `FakeClient`로 실제 HTTP 흐름 E2E(등록 → 로그인 → 동기화: 순차 적용, 재전송, 누락, 거부 후 멈춤, 의심 표시 후 계속, 동시 요청). CI 워크플로에 테스트 단계를 추가한다(Testcontainers).
-- **선행**: W1-2, W1-3, W1-5, W1-6.
+- **목표**: `FakeClient`로 실제 HTTP 흐름 E2E(등록 → 로그인 → 동기화: 순차 적용, 재전송, 누락, 거부 후 멈춤, 의심 표시 후 계속, 동시 요청)를 만들고, 이 테스트를 돌리는 **CI 워크플로를 코드 스타일 검사와 별개로** 추가한다(Testcontainers).
+- **선행**: W1-2, W1-3, W1-5, W1-6. W1-5가 끝난 뒤에 시작한다(`RUN_START` 처리기가 없으면 기본 샘플 시나리오가 `500`이다). W1-7과는 순서가 없다(아래 "W1-7과의 경계").
+- **일정 배분(2.5일)**: ① `FakeClient`·지원 클래스 0.5일 → ② 시나리오 1.5일 → ③ CI 0.5일. 순서대로 하되, ③은 ①이 끝나면 따로 PR을 내도 된다.
+- **이 작업의 범위가 아닌 것**: 엔진 한도(500개·1 MB의 413), 로그 형식 검사(`MALFORMED_LOG`), 처리기별 거부 사유 전부는 `SyncApiTests`와 처리기 단위 테스트가 이미 본다. E2E는 **실제 처리기·실제 HTTP·실제 커밋이 한 줄로 이어질 때만 생기는 문제**(적용 순서, 이중 적용, 잠금, 인증 재시도)를 본다.
+
+**① `FakeClient`와 테스트 지원 (`src/test/java/.../support/`)**
+
+- `FakeClient`에 동기화 메서드를 **추가**한다. 요청은 서버 DTO가 아니라 JSON 문자열로 조립한다(기존 원칙).
+  - `Response sync(String requestJson)`: `call("POST", "/me/sync", requestJson)`. `call`을 거치므로 401이면 갱신 후 한 번 재시도하는 흐름이 그대로 적용된다.
+  - `Response sync(String... logJsons)`: 로그 객체 글자들을 `{"logs":[...]}`로 이어 붙여 보낸다. **로그 글자는 바꾸지 않고 이어 붙이기만 한다**(계약 3.1: 재전송해도 같은 글자).
+  - 응답 편의: 거부 여부는 `rejected`가 `null`인지로 본다(`response.read("$.rejected")`). `appliedThroughSeq`, `rejected.code`, `progress.*`는 기존 `Response`의 JsonPath로 읽는다.
+  - 옛 진행 API용 `saveProgress`, `saveProgressBasedOn`, `resetProgress`, `revision`은 **이 작업에서 지우지 않는다**(W1-7의 몫, 아래 참고).
+- `SyncSamples`(새 지원 클래스): `src/test/resources/sync-samples/`의 파일을 읽는 도우미.
+  - `request()`는 `sync-request.json`의 로그 6개를 **원본 글자 그대로** 잘라서 돌려준다(예: `logs(1, 3)` = seq 1~3). 시나리오마다 샘플을 복사해 값을 손으로 고치지 않는다.
+  - 잘라 내기는 JSON을 읽어 `logs[i]`를 글자로 되돌리면 된다(Jackson 3, `tools.jackson`). 이 도우미는 테스트 코드이므로 `FakeClient`와 달리 Jackson을 써도 된다.
+  - 값을 일부러 바꾼 로그(의심 표시용 `RUN_START`, 거짓 `contentVersion` 등)는 `logs(1, 1)` 결과에서 필요한 필드 하나만 바꿔 만든다.
+- 새 테스트 클래스 `e2e/SyncClientFlowTests`. `Stage1ClientFlowTests`와 같이 `@SpringBootTest(RANDOM_PORT)` + `TestcontainersConfiguration`을 쓰고 테스트 전체를 트랜잭션으로 묶지 않는다(실제 커밋과 동시 요청을 보려는 것). `@Import`의 구성을 `Stage1ClientFlowTests`와 **같게** 두면 Spring이 컨텍스트와 MySQL 컨테이너를 재사용해 시간이 줄어든다.
+- 테스트마다 **새 계정**(`new FakeClient(...)` → `start()`)을 쓴다. 샘플의 `runId`는 계정 안에서만 유일하면 되므로(`uk_battle_run_account_run`) 계정이 다르면 같은 샘플을 여러 테스트가 써도 부딪히지 않고, 뒷정리가 필요 없다.
+- DB 확인이 필요한 곳(`sync_log`의 결과, `battle_run`의 의심 사유)은 HTTP로는 볼 수 없으므로(조회 API가 없다, 계약 4.4) `SyncLogRecordRepository`, `BattleRunRepository`를 주입해 읽는다. 필요한 조회 메서드는 테스트 쪽에서 추가한다.
+
+**② 시나리오 (`SyncClientFlowTests`)**
+
+기본 데이터는 샘플 묶음(`contentVersion` `4d6c398ad1f5e49c`)의 `sync-request.json`(seq 1 판 시작 → 2 결산 → 3 `timer-01` 구매 → 4 판 시작 → 5 결산 → 6 새 게임)이다. 기대값은 `sync-response-*.json`과 계약 3.4·3.6·3.7에서 가져온다.
+
+| # | 시나리오 | 보내는 것 | 확인할 것 |
+|---|---|---|---|
+| 1 | 순차 적용 | 새 계정에 seq 1~6 한 번에 | `appliedThroughSeq` 6, `rejected` null, 진행도가 `sync-response-applied.json`과 같다(`updatedAt` 제외: Gold 0, 노드 없음, `lastAppliedSeq` 6). `sync_log`가 6건 모두 `APPLIED` |
+| 1b | 나눠 보내기 | seq 1~3 → 이어서 4~6 (요청 둘) | 1~3 뒤 진행도: Gold 18, `timer-01` Rank 1(결산 20 − 구매 2, seq 4의 `startGold` 18과 같다). 4~6 뒤는 1과 같다 |
+| 2 | 재전송 | seq 1~3을 두 번, 그다음 seq 2~5(겹쳐서) | 두 번째 요청도 `appliedThroughSeq` 3, 거부 없음, Gold·Rank가 두 배로 늘지 않는다(Gold 18, Rank 1). 겹친 요청은 2·3을 건너뛰고 4·5만 반영한다(`sync_log`에 `SKIPPED` 2건) |
+| 3 | 누락 | 새 계정에 seq 3부터(`lastAppliedSeq` 0) | `rejected.seq` 3, `SEQ_GAP`, `appliedThroughSeq` 0, 뒤의 로그는 `NOT_PROCESSED`. 이어서 seq 1~6을 보내면 정상 반영된다. 요청 **안에서** seq가 비는 경우(1, 3)는 거부가 아니라 `400 INVALID_REQUEST`이고 아무것도 반영되지 않는다(계약 3.4) |
+| 4 | N번째 거부 | `sync-request-tampered.json`(seq 2 결산의 Gold를 99999로) | `appliedThroughSeq` 1, `rejected` = seq 2 `SETTLEMENT_GOLD_MISMATCH`, 진행도는 `sync-response-rejected.json`과 같다(`lastAppliedSeq` 1). seq 3은 `NOT_PROCESSED`. 이어서 **고친** seq 2부터 다시 보내면 반영된다(거부된 seq의 재사용) |
+| 5 | `RUN_START` 불일치 후 계속 | seq 1의 `startGold`를 999로 바꾼 `RUN_START`, 이어서 샘플의 seq 2(결산)·3 | 거부 없이 모두 반영. `battle_run.suspicious_reasons`에 `START_GOLD_MISMATCH`, `player_progress.suspicious_count` 1. 이후 결산·구매가 서버 값 기준으로 정상 처리된다(C20). `timeLimitSeconds`만 0.001 이내로 바꾼 경우는 의심이 남지 않는다(계약 4.4) |
+| 5b | 중복 `runId` | 같은 `runId`의 `RUN_START` 두 번(첫 판을 결산하지 않고) | 두 번째가 `DUPLICATE_RUN_ID`로 거부되고 첫 판은 그대로 열려 있다 |
+| 6 | 동시 요청: 같은 로그 | 같은 계정을 쓰는 두 기기(`anotherDevice()`)가 seq 1~3을 동시에 | 둘 다 `200`, `rejected` null, 최종 `lastAppliedSeq` 3, Gold 18, `timer-01` Rank 1(이중 적용이면 결산 Gold가 두 번 들어가거나 구매 로그가 중복 처리되어 값이 어긋난다). `sync_log`에서 `APPLIED`는 seq마다 정확히 1건. 라운드마다 새 계정으로 15회 반복 |
+| 6b | 동시 요청: 겹치는 범위 | 한 기기는 seq 1~3, 다른 기기는 seq 1~5를 동시에 | 어느 쪽이 먼저든 최종 `lastAppliedSeq` 5, 이중 적용 없음 |
+| 7 | 인증과 동기화 | 액세스 토큰을 만료시킨(`MutableClock`) 뒤 동기화 | `401 UNAUTHORIZED` → 갱신 → 같은 요청 재시도로 **한 번만** 반영된다. 토큰 없는 요청은 `401`(공통 오류 형식) |
+| 8 | 콘텐츠 버전 | 한 로그의 `contentVersion`만 다르게 | `CONTENT_VERSION_MISMATCH`로 거부, 앞의 로그는 반영 |
+| 9 | 빈 요청 | `sync-request-empty.json` | 진행도만 돌아온다(`appliedThroughSeq` = `lastAppliedSeq`, 거부 없음) |
+
+- 동시 요청 도우미(`runTogether`)와 `startedClient()`는 `Stage1ClientFlowTests`의 것을 참고해 새 클래스에 만든다(그쪽은 W1-7이 손대므로 공용으로 뽑지 않는다).
+- 동시 요청 테스트는 한 번 통과로 끝내지 않는다. 라운드를 반복하고(15회) 실패하면 라운드 번호가 나오게 `as("라운드 %d", round)`를 붙인다. 기준 구현은 `ofTwoConcurrentSavesWithTheSameBaseRevisionExactlyOneWins`다.
+- 규칙 값(Gold·Rank)은 샘플에서 정한 숫자를 쓴다. 표의 숫자가 구현과 다르면 테스트를 맞추지 말고 **샘플·처리기 중 어느 쪽이 틀렸는지 먼저 확인**한다(샘플은 계약 3.8의 기준이다).
+
+**W1-7과의 경계**
+
+- W1-8은 `FakeClient`에 메서드를 **더하기만** 하고 `Stage1ClientFlowTests`는 건드리지 않는다. 옛 API(`PUT /me/progress`, `POST /me/progress/reset`)와 `revision`을 쓰는 코드와 테스트를 지우는 일은 W1-7이 한다(계약 C21).
+- 둘 중 **나중에 끝나는 쪽**이 남은 정리를 한다: W1-7이 먼저면 W1-8의 `FakeClient` 수정 때 옛 메서드가 이미 없고, W1-8이 먼저면 W1-7이 `FakeClient`의 옛 메서드와 `revision` 필드를 지운다.
+- `api-spec.md`의 "기준 구현은 `FakeClient`이며 … 고친다(W1-8)" 문장은 이 작업을 마칠 때 현재형("동기화 흐름까지 구현한다")으로 고친다.
+
+**③ CI 워크플로 (코드 스타일과 분리)**
+
+- 새 파일 `.github/workflows/test.yml`을 만들고, 기존 `code-style.yml`은 **고치지 않는다.** 이유: 검사 목적과 실행 시간(Checkstyle은 컴파일 없이 문법만 보고, DB 테스트는 컨테이너를 띄운다)이 달라 한쪽이 실패해도 다른 쪽의 결과가 보여야 하고, 브랜치 보호의 필수 검사도 따로 지정할 수 있다.
+- 구성:
+  - `name: Tests`, 잡 이름 `Test`. 트리거는 `code-style.yml`과 같게 `pull_request`, `push`(`main`), `workflow_dispatch`.
+  - `permissions: contents: read`, `timeout-minutes: 20`. 같은 PR에 새 푸시가 오면 이전 실행을 취소하도록 `concurrency`(`group: tests-${{ github.ref }}`, `cancel-in-progress: true`)를 둔다.
+  - `ubuntu-latest`(Docker가 기본으로 있어 Testcontainers가 그대로 돈다), `actions/checkout@v4`, `actions/setup-java@v4`(temurin 21, `cache: gradle`).
+  - 실행: `bash ./gradlew --no-daemon test`. **`.env`나 시크릿이 필요 없다**: `build.gradle`이 테스트용 `JWT_SECRET`과 샘플 콘텐츠 위치를 이미 지정한다.
+  - 실패했을 때 `build/reports/tests/`와 `build/test-results/`를 `actions/upload-artifact@v4`로 올린다(`if: failure()`).
+  - MySQL은 서비스 컨테이너로 따로 띄우지 않는다. 테스트가 `TestcontainersConfiguration`으로 `mysql:8.4`를 직접 띄운다.
+- 확인 순서: 로컬에서 `./gradlew test`가 통과하는 것을 먼저 확인 → PR에서 워크플로 실행 확인 → 일부러 실패하는 테스트를 넣었을 때 잡이 실패하는지(그리고 리포트가 올라오는지) 한 번 확인 후 되돌린다.
+- 동시 요청 테스트가 CI의 느린 러너에서 흔들리면(가끔 실패) 라운드 수를 줄이는 것이 아니라 **실패한 라운드의 원인을 먼저 본다.** 흔들림은 대개 잠금이나 이중 적용 버그의 신호다.
+- 문서 갱신: `README.md`의 "전체 빌드·DB 테스트를 실행하는 GitHub Actions CI는 후속 단계입니다…" 문장과 `CONTRIBUTING.md`의 CI 설명(13~14행)에 Tests 워크플로를 반영한다. 병합 차단에 쓰려면 GitHub의 `main` 보호 규칙에서 **Test** 검사를 필수로 지정해야 하며, 이것은 저장소 변경만으로는 되지 않는다(팀이 직접 설정).
+- **완료 조건(CI)**: PR에서 `Checkstyle`과 `Test`가 각각 별개의 검사로 보이고, `Test`가 테스트 전체(이 E2E 포함)를 실제로 실행해 통과한다.
+
+**완료 조건(전체)**
+
+- 위 시나리오 1~9가 로컬과 CI에서 통과한다(동시 요청은 반복 라운드 포함).
+- `FakeClient`가 `/me/sync`를 보낼 수 있고, 새 `SyncSamples`를 통해 샘플 파일을 원본 그대로 쓴다.
+- `Tests` 워크플로가 `Checkstyle`과 별개로 동작하고 README·CONTRIBUTING이 이를 설명한다.
 
 #### W5-2. API 명세 갱신 (S, 1일)
 
