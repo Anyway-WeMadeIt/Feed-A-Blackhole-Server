@@ -52,7 +52,7 @@ class ProgressSchemaTests {
         assertThat(saved.getAccountId()).isEqualTo(account.getId());
         assertThat(saved.getGold()).isZero();
         assertThat(saved.getGrowthStage()).isEqualTo(PlayerProgress.INITIAL_GROWTH_STAGE);
-        assertThat(saved.getRevision()).isZero();
+        assertThat(saved.getLastAppliedSeq()).isZero();
         assertThat(saved.getCreatedAt()).isNotNull();
         assertThat(saved.getUpdatedAt()).isNotNull();
     }
@@ -69,18 +69,15 @@ class ProgressSchemaTests {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    // 옛 저장 API와 함께 revision 열을 지웠다(V4). 낙관적 버전 검사는 last_applied_seq가 대신한다.
     @Test
-    void updateBumpsTheRevision() {
-        Account account = accountRepository.save(Account.create());
-        PlayerProgress progress = progressRepository.saveAndFlush(PlayerProgress.initial(account));
+    void revisionColumnIsDropped() {
+        Integer columns = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.columns "
+                        + "WHERE table_schema = DATABASE() AND table_name = 'player_progress' AND column_name = 'revision'",
+                Integer.class);
 
-        progress.update(500, 1);
-        progressRepository.saveAndFlush(progress);
-
-        PlayerProgress found = progressRepository.findById(account.getId()).orElseThrow();
-        assertThat(found.getGold()).isEqualTo(500);
-        assertThat(found.getGrowthStage()).isEqualTo(1);
-        assertThat(found.getRevision()).isEqualTo(1);
+        assertThat(columns).isZero();
     }
 
     @Test
