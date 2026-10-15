@@ -15,6 +15,7 @@ import org.example.feedablackhole.battle.rules.BattleRules;
 import org.example.feedablackhole.battle.rules.ContentBattleRules;
 import org.example.feedablackhole.battle.rules.RunSetup;
 import org.example.feedablackhole.sync.log.RejectCode;
+import org.example.feedablackhole.sync.log.payload.NodePurchasePayload;
 import org.example.feedablackhole.sync.log.payload.RunStartPayload;
 import org.example.feedablackhole.sync.log.payload.SettlementPayload;
 import org.example.feedablackhole.sync.log.payload.SettlementPayload.KillItem;
@@ -34,12 +35,14 @@ class SettlementHandlerTests {
 
     private static BattleRules rules;
     private static SettlementHandler handler;
+    private static NodePurchaseHandler purchaseHandler;
 
     @BeforeAll
     static void load() {
         ContentBundle bundle = ContentBundleLoader.load(SettlementHandlerTests::bytes);
         rules = new ContentBattleRules(bundle.nodeTree(), bundle.battle());
         handler = new SettlementHandler(rules);
+        purchaseHandler = new NodePurchaseHandler(bundle.nodeTree());
     }
 
     private static byte[] bytes(String path) {
@@ -130,6 +133,19 @@ class SettlementHandlerTests {
         HandleResult result = handler.handle(sample("sync-request-tampered.json", 1), ctx);
 
         assertRejected(result, RejectCode.SETTLEMENT_GOLD_MISMATCH, ctx);
+    }
+
+    // 결산 전에 구매가 오면 구매가 열린 판을 닫으므로, 그 판의 결산은 RUN_NOT_OPEN이다(계약 C31)
+    @Test
+    void settlementAfterAPurchaseThatClosedTheRunIsRejected() {
+        Ctx ctx = new Ctx(0, 20, Map.of());
+        Settlement s = Settlement.of(ctx, kill("asteroid", 0, 1, false, 20));
+
+        HandleResult purchase = purchaseHandler.handle(new NodePurchasePayload("timer-01", 1, 2L), ctx);
+        assertThat(purchase).isInstanceOf(HandleResult.Applied.class);
+
+        ctx.mutated = false;
+        assertRejected(handler.handle(s.build(), ctx), RejectCode.RUN_NOT_OPEN, ctx);
     }
 
     // ---------- S1 ----------

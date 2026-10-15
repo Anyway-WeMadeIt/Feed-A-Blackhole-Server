@@ -230,4 +230,46 @@ class NodePurchaseHandlerTests {
 
         assertThat(rejectCode(result)).isEqualTo(RejectCode.RANK_MISMATCH);
     }
+
+    // 열린 판이 있을 때 구매가 통과하면 구매가 적용되고 그 판은 포기로 닫힌다(계약 C31)
+    @Test
+    void purchaseWithAnOpenRunAbandonsTheRun() {
+        FakeSyncContext context = new FakeSyncContext().withGold(20).withOpenRun(openRun());
+
+        HandleResult result = handler.handle(new NodePurchasePayload("timer-01", 1, 2L), context);
+
+        assertThat(result).isEqualTo(HandleResult.applied());
+        assertThat(context.openRun()).isEmpty();
+        assertThat(context.abandonedRuns()).isEqualTo(1);
+        assertThat(context.gold()).isEqualTo(18);
+        assertThat(context.nodeRanks()).containsEntry("timer-01", 1);
+    }
+
+    // 열린 판이 없으면 구매는 포기를 만들지 않는다
+    @Test
+    void purchaseWithoutAnOpenRunAbandonsNothing() {
+        FakeSyncContext context = new FakeSyncContext().withGold(20);
+
+        handler.handle(new NodePurchasePayload("timer-01", 1, 2L), context);
+
+        assertThat(context.abandonedRuns()).isZero();
+    }
+
+    // 구매가 거부되면 열린 판은 그대로 남는다(거부할 때는 아무것도 바꾸지 않는다)
+    @Test
+    void rejectedPurchaseKeepsTheOpenRun() {
+        FakeSyncContext context = new FakeSyncContext().withGold(1).withOpenRun(openRun());
+
+        HandleResult result = handler.handle(new NodePurchasePayload("timer-01", 1, 2L), context);
+
+        assertThat(rejectCode(result)).isEqualTo(RejectCode.NOT_ENOUGH_GOLD);
+        assertThat(context.openRun()).isPresent();
+        assertThat(context.abandonedRuns()).isZero();
+        assertThat(context.changes()).isZero();
+    }
+
+    private static OpenRun openRun() {
+        return new OpenRun("6f1c2b0a-3d4e-4f5a-8b6c-7d8e9f0a1b2c", 1, 0, 20, 1);
+    }
+
 }

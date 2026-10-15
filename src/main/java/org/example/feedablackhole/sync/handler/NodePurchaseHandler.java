@@ -81,7 +81,11 @@ public final class NodePurchaseHandler implements LogHandler<NodePurchasePayload
             return HandleResult.rejected(RejectCode.COST_MISMATCH, "비용이 맞지 않는다: 서버 " + nextCost + ", 받은 값 " + cost);
         }
 
-        // 모든 검사를 통과했다. 서버가 계산한 비용으로 Gold를 쓰고 Rank를 올린다
+        // 모든 검사를 통과했다. 열린 판이 있으면 포기로 닫는다(계약 C31). 정상 클라이언트는 결산 로그를 구매보다 먼저 보내므로
+        // 열린 판이 남아 있다면 결산 없이 끝난 판이다. 닫지 않으면 이 구매로 바뀐 노드 기준으로 그 판의 결산이 검증된다
+        context.abandonOpenRun();
+
+        // 서버가 계산한 비용으로 Gold를 쓰고 Rank를 올린다
         context.spendGold(nextCost);
         context.setNodeRank(payload.nodeId(), current + 1);
 
