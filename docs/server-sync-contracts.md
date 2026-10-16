@@ -306,41 +306,73 @@ C#이 실제 규칙으로 계산한 값을 JSON으로 내보내고, 서버 테�
       "startLevel": 0,
       "goalLevel": 10,
       "startExp": 0,
-      "nextMilestone": { "level": 10, "targetGold": 690000 },
-      "levelForExp": [ [0, 0], [9, 0], [10, 1] ],
-      "milestoneRewards": [ [0, 690000], [689999, 1], [690000, 0], [690001, 0] ]
+      "nextMilestone": {"level": 10, "targetGold": 690000},
+      "levelForExp": [
+        [0, 0],
+        [9, 0],
+        [10, 1]
+      ],
+      "milestoneRewards": [
+        [0, 690000],
+        [689999, 1],
+        [690000, 0],
+        [690001, 0]
+      ]
     }
   ],
   "loadouts": [
     {
       "name": "empty",
       "nodes": { },
-      "stats": { "timer": { "value": 12, "gain": 0 } },
+      "stats": {
+        "timer": {"value": 12, "gain": 0}
+      },
       "timeLimitSeconds": 12,
       "growthTimeSeconds": 0,
       "killTimeBonusSeconds": 0.3,
-      "startSupply": [ { "enemyId": "asteroid", "count": 20 } ],
+      "startSupply": [
+        {
+          "enemyId": "asteroid",
+          "count": 20
+        }
+      ],
       "kinds": [
         {
           "enemyId": "asteroid",
           "pickup": false,
           "maxSize": 1,
-          "tierPossible": [ true, false, false, false, false, false ],
+          "tierPossible": [true, false, false, false, false, false],
           "goldenPossible": false,
           "timeChance": 0,
           "golden": null,
-          "gold": [ [1], [6] ],
+          "gold": [
+            [1],
+            [6]
+          ],
           "goldGolden": null,
-          "exp": [ [1], [2] ],
+          "exp": [
+            [1],
+            [2]
+          ],
           "critBonus": null
         }
       ]
     }
-  ]
+  ],
+  "arithmetic": {
+    "multiply": [
+      [5, 0.5, 3],
+      [16777217, 1, 16777217]
+    ],
+    "critBonus": [
+      [5, 0.5, 3],
+      [16777217, 1, 16777216]
+    ]
+  }
 }
 ```
 
-위 값은 형식을 보여 주기 위한 예시다(실제 값은 내보내기 도구가 채운다).
+위 값은 형식을 보여 주기 위한 예시다(실제 값은 내보내기 도구가 채운다). 줄 서식은 `PyJson`이다: 객체와 배열은 한 항목에 한 줄이고, 숫자 쌍·숫자 행·`stats` 항목처럼 짧은 값은 한 줄(`[0, 0]`, `{"value": 12, "gain": 0}`)로 쓴다. 서버는 JSON으로 읽을 뿐이므로 줄 서식에는 기대지 않는다.
 
 **`stages[]`**: 성장도 0부터 마지막(`HqGrowthDefinition.maxStage()`)까지 모두. 서버 비교 대상은 `RunSetup`의 같은 이름 메서드다.
 
@@ -379,23 +411,35 @@ C#이 실제 규칙으로 계산한 값을 JSON으로 내보내고, 서버 테�
 | `tierPossible` | 색 등급마다 `TierRatios[tier] > 0` | `tierPossible(tier)`. 색 등급 수(공급 종류 6, 수거형 1)만큼 |
 | `goldenPossible` | 황금 성질이 있고 생성 확률이 0보다 큼 | `goldenPossible()` |
 | `timeChance` | 이 판 구성의 `TimeChance` | `timeChance()` |
-| `golden` | 노드가 반영된 황금 수치(`multiplier`, `critChance`, `critRewardScale`). 황금 성질이 없으면 `null` | `golden()` |
+| `golden` | 노드가 반영된 황금 수치(`multiplier`, `critChance`, `critRewardScale`). **종류에 황금 성질이 없을 때만** `null`이다(생성 확률이 0이어도 값이 있다) | `golden()` (비어 있음 = `null`) |
 | `gold`, `exp` | `[tier][size − 1]`. 크기는 1부터 `maxSize`까지, 색 등급은 전부(질량이 0인 색도 넣는다). 황금이 아닌 개체의 값(`EnemyStatTable.Of`) | `goldOf(tier, size, false)`, `expOf(tier, size)` |
-| `goldGolden` | `gold`와 같은 모양, 황금 개체의 Gold(황금 배율 반영). 황금 성질이 없으면 `null` | `goldOf(tier, size, true)` |
-| `critBonus` | `gold`와 같은 모양. 황금 치명 보너스, `DeathRewards`와 같은 식(`long × float`을 float 곱셈으로, .5는 0에서 먼 쪽으로 반올림. C28). 황금 성질이 없으면 `null` | `goldenCritBonusOf(tier, size)` |
+| `goldGolden` | `gold`와 같은 모양, 황금 개체의 Gold(황금 배율 반영). **`goldenPossible`이 `false`면 `null`**(서버도 이때 `goldOf(…, true)`가 예외를 던진다) | `goldOf(tier, size, true)` |
+| `critBonus` | `gold`와 같은 모양. 황금 치명 보너스. 클라이언트 `DeathRewards.CritBonusOf`를 그대로 부른 값이다(`long × float`을 float 곱셈으로, .5는 0에서 먼 쪽으로 반올림. C28). `goldenPossible`이 `false`면 `null` | `goldenCritBonusOf(tier, size)` |
+
+**`arithmetic`**: 콘텐츠와 무관한 곱셈·반올림 확인 지점이다. 현재 콘텐츠는 황금 배율이 정수이고 황금 Gold가 작아서 float과 double의 차이, 정확히 .5가 되는 곱, 큰 값의 정밀도를 한 번도 건드리지 않는다. 그래서 서버가 이 식들을 틀리게 구현해도 `stages`·`loadouts` 비교는 통과한다(변이 확인으로 확인했다). 이 칸이 그 빈틈을 메운다. 입력은 값 16개 × 배율 14개이고(`RulesTableBuilder.ArithmeticValues`·`ArithmeticFactors`), 결과는 클라이언트의 실제 식이 낸다. 모두 `[값, 배율, 결과]` 쌍이다.
+
+| 칸 | 원본(클라이언트) | 서버 비교 대상 |
+|---|---|---|
+| `multiply` | `EnemyDefinition.Multiply(value, factor)`: `long × (double) float`, .5는 0에서 먼 쪽. 크기 배율, 황금 배율을 곱하는 식 | `Rounding.scaled(value, factor)` |
+| `critBonus` | `DeathRewards.CritBonusOf(gold, scale)`: `long × float`을 **float 곱셈**으로, .5는 0에서 먼 쪽(C28) | `Rounding.critBonus(gold, scale)` |
+
+- 값과 배율은 곱이 `long`을 넘지 않는 범위다. 홀수 × 0.5(정확히 .5), 2^24(16777216)를 넘는 값, 0.1처럼 float로 정확히 나타낼 수 없는 배율이 들어 있다.
+- 서버 `KindComposition`은 크기·황금 배율 곱과 치명 보너스에 이 두 도우미를 쓴다. 도우미만 틀려도 `loadouts`가 아니라 `arithmetic`이 먼저 잡는다.
 
 **서버 테스트(W4-1b)가 지킬 것**
 
 - 비교는 **완전 일치**다. float은 비트 비교(`Float.floatToIntBits`), long은 `==`다. 허용 오차를 두지 않는다.
 - 서버 콘텐츠는 실제 묶음이다(`ContentBundleLoader`로 `/content/`를 읽는다. `RealContentRulesTests`와 같은 방식). 파일의 `contentVersion`이 서버 목차의 값과 다르면 값을 비교하지 않고 "픽스처 재생성 필요"로 실패한다.
 - 모든 loadout에서 `upgradesFor(nodes)`를 만들고, 모든 stage에서 `setupFor(stage, upgrades)`를 만든다. loadout 항목(`stats`, 시간, `startSupply`, `kinds`)은 모든 stage에서, stage 항목은 모든 loadout에서 같아야 한다(교차 조합 전체).
-- `goldGolden`·`critBonus`가 `null`인 종류는 `goldenPossible() == false`와 `golden()`이 비어 있음도 함께 확인한다.
+- `goldGolden`·`critBonus`가 `null`인 종류는 `goldenPossible() == false`도 함께 확인한다. `golden`이 `null`인 종류는 `golden()`이 비어 있는지 확인한다. `golden`이 있고 `goldenPossible`이 `false`인 종류(황금 성질은 있으나 생성 확률 0)도 있다.
+- `arithmetic`의 두 칸도 같은 완전 일치로 비교한다.
 - 값이 어긋나면 `stats`(합산·clamp 단계)와 그 아래 값(규칙 단계)을 나눠 보고하도록 메시지를 쓴다. 어느 loadout의 어느 필드인지(예: `partial-50 / planet / goldGolden[2][1]`)가 메시지에 나와야 한다.
 
 **내보내기 도구(W4-1a)가 지킬 것**
 
 - 클라이언트가 예외를 던지는 상태(예: 성질 확률 합이 100%를 넘는 `all`)는 건너뛰지 않고 내보내기를 실패시킨다.
 - 같은 콘텐츠로 두 번 내보내면 파일이 바이트까지 같아야 한다.
+- `critBonus`는 곱한 결과를 `(float)`로 한 번 더 받아 float 정밀도로 확정한다(`DeathRewards.CritBonusOf`). 이렇게 하지 않으면 런타임에 따라 값이 달라진다: Unity 에디터(Mono)는 float 곱셈의 중간 결과를 더 높은 정밀도로 들고 있다가 반올림하고(`16777215 × 1.5` → 25165823), IL2CPP 빌드(Android, WebGL)와 Java는 엄밀한 float로 계산한다(25165822). 표를 에디터에서 내보내므로 이 확정이 없으면 서버와 어긋난다.
 - 파일의 `contentVersion`은 클라이언트가 계산한 서버 콘텐츠 버전(`ServerContent.VersionOf`)이다.
 - 콘텐츠를 바꾸면 W0-1의 묶음 내보내기 뒤에 이 표도 다시 내보낸다(계획서 4.1의 6).
 
@@ -414,6 +458,8 @@ C#이 실제 규칙으로 계산한 값을 JSON으로 내보내고, 서버 테�
 | C32 | 이식 검증 픽스처(기대값 표, 골든 로그)는 클라이언트의 실제 콘텐츠로 만들고, 그 테스트는 서버의 실제 묶음 위에서 돈다 | 클라이언트 콘텐츠가 확정되어 마무리 검증 단계다. 서버에 옮겨 와 버전을 맞춘 뒤(`contentVersion` 일치) 그 값을 기준으로 이식을 검증한다. 콘텐츠가 바뀌면 픽스처 재생성이 필요하다고 테스트가 알린다 |
 | C33 | 기대값 표의 노드 상태(loadout)는 `empty`, `partial-10/25/50/75`, `all` 6종으로 한다. 노드 하나씩 단독으로 산 상태는 넣지 않는다 | 구매 순서가 결정적이고 파일이 작다. 단독 진단은 필요할 때 더한다 |
 | C34 | 기대값 표는 성장도(stage)와 산 노드(loadout)를 나눠 담고 서버 테스트가 교차해서 확인한다 | 두 축이 독립이라 파일이 작아지고, 서버 구현이 둘을 섞어 쓰면 교차 확인에서 잡힌다 |
+| C35 | 기대값 표에 콘텐츠와 무관한 산술 확인 지점(`arithmetic`: `multiply`, `critBonus`)을 둔다. 서버는 두 식을 `Rounding.scaled`, `Rounding.critBonus`로 모은다 | 현재 콘텐츠는 float·double 차이와 반올림 경계를 건드리지 않아 `loadouts`만으로는 틀린 구현을 못 잡는다(변이 확인에서 3종을 놓쳤다). 클라이언트의 같은 식이 낸 값으로 직접 확인한다 |
+| C36 | 클라이언트 `CritBonusOf`는 곱셈 결과를 `(float)`로 확정한다 | 에디터(Mono)와 IL2CPP·서버의 float 곱셈이 2^24 이상에서 갈린다. 실제 게임 값(황금 Gold 최대 약 1,900)에서는 같아 동작은 바뀌지 않는다 |
 
 ### 1.9 산출물
 
