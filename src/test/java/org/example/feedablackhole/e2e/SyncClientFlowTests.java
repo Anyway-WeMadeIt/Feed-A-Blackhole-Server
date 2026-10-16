@@ -96,6 +96,8 @@ class SyncClientFlowTests {
     private static final String DUPLICATE_RUN_ID = "DUPLICATE_RUN_ID";
     // 로그의 contentVersion이 서버가 읽은 콘텐츠 묶음의 버전과 다를 때의 거부 코드
     private static final String CONTENT_VERSION_MISMATCH = "CONTENT_VERSION_MISMATCH";
+    // 스프링 테스트가 읽는 샘플 콘텐츠 묶음의 버전. 서버가 응답의 contentVersion으로 돌려주는 값이다
+    private static final String SAMPLE_CONTENT_VERSION = "4d6c398ad1f5e49c";
 
     // ---------- 시나리오 ----------
 
@@ -615,6 +617,42 @@ class SyncClientFlowTests {
                 SyncLogResult.APPLIED, SyncLogResult.REJECTED, SyncLogResult.NOT_PROCESSED,
                 SyncLogResult.APPLIED, SyncLogResult.APPLIED
         );
+    }
+
+    /**
+     * 시나리오 9(빈 요청): 로그가 없는 요청은 아무것도 처리하지 않고 현재 진행도만 돌려준다. 클라이언트가 서버가 어디까지 반영했는지
+     * 알아볼 때 쓴다(appliedThroughSeq가 서버의 lastAppliedSeq와 같다). 새 계정이든 이미 반영한 계정이든 진행도는 바뀌지 않는다.
+     */
+    @Test
+    void anEmptyRequestReturnsOnlyTheProgress() {
+        FakeClient client = startedClient();
+
+        // 새 계정: 반영한 로그가 없어서 appliedThroughSeq와 lastAppliedSeq가 모두 0이고, 진행도는 처음 상태다
+        FakeClient.Response fresh = client.sync(SyncSamples.emptyRequest()).expect(200);
+
+        assertThat(fresh.number(APPLIED_THROUGH_SEQ)).isEqualTo(0);
+        assertThat(fresh.<Object>read(REJECTED)).isNull();
+        assertThat(fresh.text("$.contentVersion")).isEqualTo(SAMPLE_CONTENT_VERSION);
+        assertThat(fresh.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(0);
+        assertThat(fresh.number(PROGRESS_GOLD)).isEqualTo(0);
+        assertThat(fresh.<List<Object>>read(PROGRESS_NODES)).isEmpty();
+        assertThat(results(client)).isEmpty();
+
+        // seq 1~3을 반영한 뒤: 빈 요청이 현재 진행도(Gold 18, timer-01 Rank 1)를 그대로 돌려주고, appliedThroughSeq는 3이다
+        // ① 로그 1~3을 보낸다           → 서버 상태가 바뀜 (Gold 18, 노드 1개, seq 3)
+        client.sync(SyncSamples.logs(1, 3)).expect(200);
+
+        // ② 빈 요청을 보낸다 (applied)  → 서버가 "지금 상태"를 응답에 담아 줌 → applied의 값이 ①에서 만든 상태와 같은지 확인
+        FakeClient.Response applied = client.sync(SyncSamples.emptyRequest()).expect(200);
+
+        assertThat(applied.number(APPLIED_THROUGH_SEQ)).isEqualTo(3);
+        assertThat(applied.<Object>read(REJECTED)).isNull();
+        assertThat(applied.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(3);
+        assertThat(applied.number(PROGRESS_GOLD)).isEqualTo(18);
+        assertThat(applied.number(PROGRESS_NODES_LENGTH)).isEqualTo(1);
+
+        // 빈 요청은 sync_log에 아무것도 더하지 않는다(앞의 반영 3건뿐이다)
+        assertThat(results(client)).containsOnly(SyncLogResult.APPLIED).hasSize(3);
     }
 
     // ---------- 도우미 ----------

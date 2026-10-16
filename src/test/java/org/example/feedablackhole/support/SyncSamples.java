@@ -27,6 +27,9 @@ public final class SyncSamples {
     // seq 2 결산의 Gold를 99999로 부풀린 요청(seq 1~3). 결산 검증이 거부하는지 볼 때 쓴다
     private static final String TAMPERED = "/sync-samples/sync-request-tampered.json";
 
+    // 로그가 없는 요청(진행도만 받는다)
+    private static final String EMPTY = "/sync-samples/sync-request-empty.json";
+
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private SyncSamples() {
@@ -52,6 +55,13 @@ public final class SyncSamples {
      */
     public static String[] tamperedLogs() {
         return logsOf(TAMPERED, 1, Integer.MAX_VALUE);
+    }
+
+    /**
+     * 로그가 없는 요청의 본문 전체({"logs":[]}). 요청 본문 전체를 받는 FakeClient.sync(String)에 그대로 넘긴다.
+     */
+    public static String emptyRequest() {
+        return read(EMPTY).toString();
     }
 
     /**
