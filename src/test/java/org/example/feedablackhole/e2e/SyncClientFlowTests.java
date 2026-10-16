@@ -94,6 +94,8 @@ class SyncClientFlowTests {
     private static final String RUN_START = "RUN_START";
     // 이미 쓴 runId로 판 시작을 보냈을 때의 거부 코드
     private static final String DUPLICATE_RUN_ID = "DUPLICATE_RUN_ID";
+    // 로그의 contentVersion이 서버가 읽은 콘텐츠 묶음의 버전과 다를 때의 거부 코드
+    private static final String CONTENT_VERSION_MISMATCH = "CONTENT_VERSION_MISMATCH";
 
     // ---------- 시나리오 ----------
 
@@ -571,6 +573,48 @@ class SyncClientFlowTests {
 
         // 토큰이 없어서 요청이 엔진까지 가지 않았으므로 아무것도 기록되지 않았다
         assertThat(results(client)).isEmpty();
+    }
+
+    /**
+     * 시나리오 8(콘텐츠 버전): 한 로그의 contentVersion만 서버와 다르면 그 로그를 CONTENT_VERSION_MISMATCH로 거부하고 멈춘다.
+     * 클라이언트와 서버의 콘텐츠가 달라진 상태에서 계산한 로그를 믿지 않으려는 것이다. 앞의 로그는 이미 반영되어 그대로 남고,
+     * 뒤의 로그는 처리하지 않는다. 서버 버전과 같은 원본 로그로 다시 보내면 거부된 번호도 정상 반영된다.
+     */
+    @Test
+    void aLogWithAnotherContentVersionIsRejectedAndTheEarlierLogsStay() {
+        FakeClient client = startedClient();
+        String[] sample = SyncSamples.logs(1, 3);
+
+        // seq 2(결산)의 contentVersion만 서버의 것(4d6c398ad1f5e49c)과 다르게 바꾼다. 형식은 맞는 16자리 16진수다
+        String otherVersion = SyncSamples.withLogField(sample[1], "contentVersion", "0000000000000000");
+
+        FakeClient.Response rejected = client.sync(sample[0], otherVersion, sample[2]).expect(200);
+
+        // seq 1은 반영되었고, seq 2는 버전 불일치로 거부되며, 진행도는 seq 1까지의 상태다
+        assertThat(rejected.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
+        assertThat(rejected.number(REJECTED + ".seq")).isEqualTo(2);
+        assertThat(rejected.text(REJECTED + ".type")).isEqualTo(SETTLEMENT);
+        assertThat(rejected.text(REJECTED + ".code")).isEqualTo(CONTENT_VERSION_MISMATCH);
+        assertThat(rejected.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(1);
+        assertThat(rejected.number(PROGRESS_GOLD)).isEqualTo(0);
+
+        // seq 1은 반영, seq 2는 거부(CONTENT_VERSION_MISMATCH), seq 3은 처리하지 않았다(NOT_PROCESSED)
+        assertThat(results(client)).containsExactly(
+                SyncLogResult.APPLIED, SyncLogResult.REJECTED, SyncLogResult.NOT_PROCESSED
+        );
+
+        // 서버 버전과 같은 원본 seq 2부터 다시 보낸다. 거부된 번호를 다시 써도 이번에는 정상 반영된다
+        FakeClient.Response resent = client.sync(SyncSamples.logs(2, 3)).expect(200);
+
+        assertThat(resent.number(APPLIED_THROUGH_SEQ)).isEqualTo(3);
+        assertThat(resent.<Object>read(REJECTED)).isNull();
+        assertThat(resent.number(PROGRESS_GOLD)).isEqualTo(18);
+
+        // 처음 요청의 기록(반영, 거부, 처리 안 함)에 이어, 다시 보낸 seq 2, 3이 반영으로 기록된다
+        assertThat(results(client)).containsExactly(
+                SyncLogResult.APPLIED, SyncLogResult.REJECTED, SyncLogResult.NOT_PROCESSED,
+                SyncLogResult.APPLIED, SyncLogResult.APPLIED
+        );
     }
 
     // ---------- 도우미 ----------
