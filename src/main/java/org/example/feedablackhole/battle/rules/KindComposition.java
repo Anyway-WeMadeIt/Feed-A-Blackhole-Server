@@ -158,9 +158,9 @@ public final class KindComposition implements KindSetup {
         }
 
         // 크기 배율은 float이고, long × double로 곱한다(float을 double로 넓힌다)
-        long gold = Rounding.awayFromZero(kind.tiers().get(tier).gold() * (double) SizeRule.statMultiplier(size));
+        long gold = Rounding.scaled(kind.tiers().get(tier).gold(), SizeRule.statMultiplier(size));
         if (golden) {
-            gold = Rounding.awayFromZero(gold * (double) this.golden.multiplier());
+            gold = Rounding.scaled(gold, this.golden.multiplier());
         }
         return gold;
     }
@@ -171,7 +171,7 @@ public final class KindComposition implements KindSetup {
         requireTier(tier);
         requireSize(size);
 
-        return Rounding.awayFromZero(kind.tiers().get(tier).exp() * (double) SizeRule.statMultiplier(size));
+        return Rounding.scaled(kind.tiers().get(tier).exp(), SizeRule.statMultiplier(size));
     }
 
     // 황금 보너스 치명 한 번의 Gold: round(황금 Gold × 치명 배율)
@@ -179,9 +179,8 @@ public final class KindComposition implements KindSetup {
     public long goldenCritBonusOf(int tier, int size) {
         long gold = goldOf(tier, size, true);
 
-        // C#의 gold * CritRewardScale은 long * float이라 float 곱셈이다. Java도 long * float은 float 곱셈이다.
-        // double로 바꿔 곱하면 큰 Gold에서 값이 달라진다
-        return Rounding.awayFromZero(gold * golden.critRewardScale());
+        // long * float은 float 곱셈이다(C28). 식은 Rounding.critBonus에 모아 기대값 표의 산술 확인 지점이 직접 확인한다
+        return Rounding.critBonus(gold, golden.critRewardScale());
     }
 
     // 시작 공급에 더하는 마리 수(5단계의 시작 공급 계산이 쓴다)
