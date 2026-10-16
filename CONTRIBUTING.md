@@ -10,8 +10,14 @@
 - DB 스키마·데이터 또는 환경 설정을 변경하면 적용 방법과 기존 환경에 미치는 영향을 설명합니다.
 - 병합은 PR 단위로 기록을 남기는 Squash merge를 권장하며, 최종 커밋 제목에도 아래 형식을 사용합니다.
 
-Java 컨벤션은 Gradle과 `.github/workflows/code-style.yml`에서 검사합니다. GitHub에 푸시하면 PR과 `main` 푸시에서 실행됩니다.
-브랜치 보호와 필수 리뷰는 별도 설정이 필요합니다. 최초 실행 후 GitHub의 `main` 보호 규칙에서 **Checkstyle** 검사를 필수로 지정하고 승인 1명 이상을 요구하면, 검사 실패나 리뷰 누락 시 병합을 차단할 수 있습니다. 이 저장소 변경만으로 원격 보호 규칙이 활성화되지는 않습니다.
+CI는 두 워크플로로 나뉘며, GitHub에 푸시하면 PR과 `main` 푸시에서 둘 다 실행됩니다. 검사 목적과 실행 시간이 달라서(Checkstyle은 컴파일 없이 문법만 보고, 테스트는 DB 컨테이너를 띄웁니다) 한쪽이 실패해도 다른 쪽 결과가 보이도록 분리했습니다.
+
+| 워크플로 | 파일 | 검사 이름 | 하는 일 |
+| --- | --- | --- | --- |
+| Code style | `.github/workflows/code-style.yml` | **Checkstyle** | Java 컨벤션 검사 |
+| Tests | `.github/workflows/test.yml` | **Test** | `./gradlew test` 전체 테스트(Testcontainers MySQL, E2E 포함). 실패하면 리포트를 `test-reports` 아티팩트로 올립니다 |
+
+브랜치 보호와 필수 리뷰는 별도 설정이 필요합니다. 최초 실행 후 GitHub의 `main` 보호 규칙에서 **Checkstyle**과 **Test** 검사를 필수로 지정하고 승인 1명 이상을 요구하면, 검사 실패나 리뷰 누락 시 병합을 차단할 수 있습니다. 이 저장소 변경만으로 원격 보호 규칙이 활성화되지는 않으므로 팀이 GitHub에서 직접 설정해야 합니다.
 
 ## 커밋
 
@@ -87,7 +93,7 @@ Windows에서는 아래 명령을 실행합니다. macOS/Linux에서는 `bash ./
 - IntelliJ에서 Checkstyle 연동 플러그인을 사용하는 경우 동일한 XML과 도구 버전을 지정합니다. IDE 플러그인 없이도 Gradle 검사는 동작하며, CI 결과를 공통 기준으로 삼습니다.
 - 검사기는 코드를 자동 수정하지 않습니다. 포맷은 Reformat Code, import는 Optimize Imports, 이름은 IDE Rename 리팩터링으로 수정합니다.
 
-현재 CI는 코드 스타일 전용입니다. 전체 빌드·DB 통합 테스트 CI는 후속 단계이며, 로컬 Git 훅과 별도 빌드 포매터는 추가하지 않았습니다.
+코드 스타일은 Code style 워크플로가, 전체 빌드와 DB 테스트는 Tests 워크플로가 검사합니다. 로컬 Git 훅과 별도 빌드 포매터는 추가하지 않았습니다.
 
 ## Spring Boot·Gradle과 Git
 
@@ -103,7 +109,7 @@ Windows에서는 아래 명령을 실행합니다. macOS/Linux에서는 `bash ./
 ## 제출 전 확인
 
 1. 코드 변경 시 Wrapper로 `build`를 실행해 컴파일·테스트를 확인합니다. 현재 DB 구성의 제한은 [README.md](README.md)를 참고합니다.
-   DB 준비 전에도 `checkstyleMain checkstyleTest`는 실행해 컨벤션을 확인합니다.
+   DB 준비 전에도 `checkstyleMain checkstyleTest`는 실행해 컨벤션을 확인합니다. PR을 올리면 Tests 워크플로가 같은 테스트를 CI에서 다시 실행하므로, PR 화면에서 `Test` 검사가 통과하는지도 확인합니다.
 2. API 변경은 정상·오류 요청을 확인하고 요청·응답 예시와 결과를 PR에 기록합니다.
 3. DB 변경은 기존 데이터 영향과 적용 순서를 확인합니다.
 4. `git diff --check`와 `git status --short`로 공백 오류와 불필요한 파일을 확인합니다.

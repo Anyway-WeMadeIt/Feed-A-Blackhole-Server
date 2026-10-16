@@ -161,6 +161,24 @@ public final class FakeClient {
         return call("GET", "/me/progress", null);
     }
 
+    // ---------- 동기화 ----------
+
+    /**
+     * 로그 글자들을 {"logs":[...]}로 이어 붙여 보낸다. 로그가 하나여도, 배열이어도 항상 감싸진다.
+     * 로그 글자는 바꾸지 않는다(계약 3.1: 재전송해도 같은 글자).
+     */
+    public Response sync(String... logJsons) {
+        return syncRaw("{\"logs\":[" + String.join(",", logJsons) + "]}");
+    }
+
+    /**
+     * 요청 본문 전체를 그대로 보낸다(빈 요청 샘플처럼 이미 완성된 본문). 로그 하나를 보낼 때는 sync(log)를 쓴다.
+     * 이름을 sync와 나눈 이유: 둘 다 sync이면 문자열 하나를 넘길 때 본문 전체용이 골라져 로그가 감싸지지 않는다.
+     */
+    public Response syncRaw(String requestJson) {
+        return call("POST", "/me/sync", requestJson);
+    }
+
     // ---------- 저수준: 요청 한 건 ----------
 
     /**
