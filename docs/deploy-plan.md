@@ -72,13 +72,20 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 
 ### 2단계. AWS 인프라 수동 구축 (콘솔로 한 번 직접 만들어 본다)
 처음에는 콘솔로 손수 만들어 각 구성요소의 역할을 이해하고, 안정되면 IaC(Terraform 등)는 선택 과제로 둔다.
-- [ ] 네트워크: 서울 리전에는 기본 VPC가 없으므로 **VPC를 새로 만든다**(콘솔의 "VPC 등" 마법사 사용: 2개 AZ, 퍼블릭 서브넷 2 + 프라이빗 서브넷 2, 인터넷 게이트웨이 포함, **NAT 게이트웨이는 만들지 않는다**. 시간당 요금이 크다). RDS 서브넷 그룹은 프라이빗 서브넷 2개(서로 다른 AZ)로 만든다. EC2는 퍼블릭 서브넷에 둔다.
-- [ ] 보안그룹 2개: `sg-app`(80/443 전체 허용, SSH는 없음 또는 내 IP만), `sg-db`(3306은 `sg-app`에서만 허용)
-- [ ] RDS: MySQL **8.4**, 인스턴스는 소형(예: db.t4g.micro), 퍼블릭 액세스 **끔**, 자동 백업 켬, 파라미터 그룹에서 문자셋 `utf8mb4`·시간대 UTC
-- [ ] ECR 프라이빗 리포지토리 생성(이미지 태그 변경 불가 옵션, 푸시 시 스캔, 수명 주기 규칙으로 오래된 이미지 정리하되 롤백용 최근 N개는 유지)
-- [ ] EC2: Amazon Linux 2023, **x86_64 계열 소형 인스턴스(예: `t3.small`, ARM인 `t4g`는 사용하지 않는다)**, `sg-app` 연결, **인스턴스 프로파일(IAM 역할)** 에 SSM 접근 권한, Parameter Store 읽기 권한, **ECR pull 권한** 부여, 탄력적 IP 연결. Docker 설치
-- [ ] Parameter Store(SecureString): `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`
-- 검증: EC2에서 `mysql` 클라이언트로 RDS에 접속되고, 내 PC에서는 RDS에 접속되지 않는다. EC2에서 `aws ecr get-login-password`로 ECR 로그인이 된다.
+진행 기록(2026-10-15, 모두 서울 리전). 리소스 이름은 `blackhole-` 접두사를 쓴다.
+- [x] 네트워크: 서울 리전에는 기본 VPC가 없어 **VPC를 새로 만들었다**(`blackhole-vpc`, 10.0.0.0/16, 2개 AZ, 퍼블릭 2 + 프라이빗 2, 인터넷 게이트웨이, S3 게이트웨이 엔드포인트, **NAT 없음**). DB 서브넷 그룹 `blackhole-db-subnet-group`은 프라이빗 서브넷 2개(2a, 2b)로 만들었다. EC2는 퍼블릭 서브넷(2a)에 둔다.
+- [x] 보안그룹: `blackhole-sg-app`(80/443 전체 허용, SSH 없음), `blackhole-sg-db`(3306은 `blackhole-sg-app`에서만 허용)
+- [x] RDS `blackhole-db`: MySQL 8.4.11, `db.t4g.micro`, 단일 AZ, 퍼블릭 액세스 끔, 암호화, 삭제 방지, 초기 DB `feedablackhole`, 마스터 사용자 `blackhole`. 엔드포인트 `blackhole-db.cpommuukazys.ap-northeast-2.rds.amazonaws.com`.
+  - 무료 플랜 제한으로 **자동 백업 보존은 1일**(7일은 거부됨), 프리 티어 템플릿·단일 AZ로 고정된다. 기본 파라미터 그룹 `default.mysql8.4`가 문자셋 utf8mb4·시간대 UTC라 별도 파라미터 그룹은 만들지 않았다.
+  - 마스터 계정은 관리용으로만 쓰고, **앱 전용 DB 계정을 따로 만든다**(아래 3단계 전 작업).
+- [x] ECR `feedablackhole-server`(태그 변경 불가, AES-256), 수명 주기 규칙 "이미지 10개 초과 시 오래된 것 만료". URI `098981324445.dkr.ecr.ap-northeast-2.amazonaws.com/feedablackhole-server`. 푸시 시 스캔은 리포지토리 설정이 사라지고 레지스트리 단위로 옮겨져 설정하지 않았다.
+- [x] IAM: 정책 `blackhole-read-parameters`(SSM 파라미터 읽기. 리소스는 `parameter/blackhole`와 `parameter/blackhole/*` 둘 다 필요하다. `get-parameters-by-path`는 경로 자체를 리소스로 검사하므로 `/*`만 허용하면 거부된다), 역할 `blackhole-ec2-role`(+ `AmazonSSMManagedInstanceCore`, `AmazonEC2ContainerRegistryReadOnly`)
+- [x] EC2 `blackhole-app`(`i-0e1c9ac4c5fd0af9f`): Amazon Linux 2023 x86_64, `t3.small`(크레딧 표준), `blackhole-sg-app`, 20GiB gp3 암호화, 키 페어 없음(SSM으로만 접속), IMDSv2 필수, 종료 방지, 사용자 데이터로 Docker 설치·로그 10MB×3 제한. 탄력적 IP `54.116.29.217` 연결.
+- [x] Parameter Store(SecureString, 키 `alias/aws/ssm`) `/blackhole/DB_URL`(`...:3306/feedablackhole?sslMode=REQUIRED`), `/blackhole/DB_USERNAME`(`blackhole_app`), `/blackhole/DB_PASSWORD`, `/blackhole/JWT_SECRET`. 비밀값 두 개는 직접 입력했고 비밀번호 관리자에도 저장했다.
+- [x] 앱 전용 DB 계정 `blackhole_app`@`10.0.%`: `feedablackhole` 스키마에 SELECT/INSERT/UPDATE/DELETE/CREATE/ALTER/DROP/INDEX/REFERENCES만 부여했다(Flyway가 DDL을 실행하므로 DDL 권한 포함, 서버 전체 권한 없음). 마스터 계정은 관리용으로만 쓴다. 비밀번호는 `/blackhole/DB_PASSWORD`와 동일한 값이며 SQL에는 터미널이 Parameter Store에서 읽어 넣었다.
+- 2단계 진행 중 확인한 사항: EC2에서 ECR 로그인 성공, 인스턴스 역할 인식, SSM 관리 대상 등록 확인. 내 PC에서 RDS 3306과 EC2의 22·8080·3306에 접속되지 않음을 확인했다.
+- 이전 실습의 잔여 리소스(미정리): IAM 역할 `test-ec2-ssm-readonly`, RDS 서브넷 그룹 `my-vpc-private-subnet-group`·`my-vpc-public-subnet-group`, Parameter Store `/webcraft/prod/*`(평문 String으로 저장된 `DB_PASSWORD` 포함).
+- 검증: EC2에서 RDS에 접속되고, 내 PC에서는 RDS에 접속되지 않는다. EC2에서 `aws ecr get-login-password`로 ECR 로그인이 된다. SSM Session Manager로 EC2에 접속된다.
 
 ### 3단계. 수동 배포로 한 번 끝까지 해 보기
 자동화 전에 사람이 하는 절차를 먼저 겪어야 자동화할 내용을 정확히 알 수 있다.
@@ -89,9 +96,12 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 - 검증: EC2 내부에서 `curl localhost:8080/actuator/health`가 `UP`, `docker logs`에서 Flyway V1~V3 적용 로그 확인, EC2를 재부팅해도 컨테이너가 다시 뜬다. 이 절차를 스크립트(`deploy.sh <태그>`)로 정리해 둔다.
 
 ### 4단계. 도메인과 HTTPS
-- [ ] 도메인 구입 또는 보유 도메인에 A 레코드로 EC2 탄력적 IP 연결
-- [ ] Nginx 설치, 443 → 8080 프록시, certbot으로 인증서 발급·자동 갱신
-- 검증: 내 PC 브라우저/`curl https://도메인/actuator/health`가 성공한다. 클라이언트 접속 주소를 이 도메인으로 바꿔 게스트 로그인이 동작한다.
+도메인은 두 단계로 간다. 먼저 **임시 무료 도메인**(예: DuckDNS)으로 HTTPS까지 동작을 검증하고, 팀원과 논의해 **정식 도메인을 구매하면 교체**한다. 교체가 쉽도록 서버 주소를 코드에 고정하지 않는다(클라이언트의 서버 주소는 설정값으로 둔다).
+- [ ] (임시) 무료 서브도메인을 발급받아 A 레코드를 EC2 탄력적 IP(`54.116.29.217`)로 연결. 계정 가입·로그인은 직접 한다.
+- [ ] Nginx 설치, 443 → 8080 프록시(`server_name`에 도메인 지정), certbot으로 인증서 발급·자동 갱신. 앱 포트 8080은 외부에 열지 않는다(`127.0.0.1`에만 바인딩).
+- [ ] (정식) 도메인 구매 후 같은 탄력적 IP로 A 레코드 연결 → Nginx `server_name`과 인증서에 새 도메인 추가 → 클라이언트 서버 주소 변경·배포. **전환 기간에는 두 도메인을 함께 서비스**하고, 구 클라이언트가 사라지면 임시 도메인을 제거한다.
+- 검증: 내 PC에서 `curl https://도메인/actuator/health`가 성공한다. 클라이언트 접속 주소를 이 도메인으로 바꿔 게스트 로그인이 동작한다.
+- 참고: JWT 발급자(`app.jwt.issuer`)는 URL이 아니라 고정 문자열이라 도메인을 바꿔도 발급된 토큰이 무효화되지 않는다. 무료 도메인은 가용성과 인증서 발급 한도를 보장하지 않으므로 정식 출시에는 쓰지 않는다.
 
 ### 5단계. CI 확장 (PR 단계)
 - [ ] 새 워크플로 `ci.yml`: `./gradlew build`(테스트 포함) 실행. ubuntu 러너에는 Docker가 있어 Testcontainers가 그대로 동작한다.
