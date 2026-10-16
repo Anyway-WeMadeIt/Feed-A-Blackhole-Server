@@ -18,6 +18,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -462,6 +463,7 @@ class SyncClientFlowTests {
      * 1~5가 먼저면 1~3 요청은 모두 건너뛴다. 어느 경우든 반영(APPLIED)은 seq마다 정확히 1건이고 이중 적용이 없다.
      * 한 번 통과로는 우연일 수 있어서 라운드마다 새 계정으로 15번 반복한다.
      */
+    @Test
     void overlappingRangesSentAtOnceEndInTheSameState() throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -512,6 +514,63 @@ class SyncClientFlowTests {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    /**
+     * 시나리오 7(인증과 동기화): 액세스 토큰이 만료된 채로 동기화를 보내면 401 UNAUTHORIZED로 거절되고, 클라이언트가 토큰을 갱신해
+     * 같은 요청을 다시 보내 한 번만 반영된다. 401은 인증 단계에서 막혀 동기화 엔진까지 가지 않으므로, 거절된 첫 요청의 로그는 처리되지 않았다.
+     * 시계(MutableClock)를 앞당겨 토큰 만료를 기다리지 않고 재현한다(액세스 토큰은 15분).
+     */
+    @Test
+    void aSyncWithAnExpiredAccessTokenIsRefreshedAndAppliedOnlyOnce() {
+        FakeClient client = startedClient();
+
+        // 액세스 토큰이 만료되도록 시계를 16분 앞당긴다(리프레시 토큰은 아직 유효하다)
+        clock.advance(Duration.ofMinutes(16));
+        client.clearLog();
+
+        FakeClient.Response response = client.sync(SyncSamples.logs(1, 3)).expect(200);
+
+        // 요청 기록: 만료된 토큰으로 401, 토큰 갱신, 같은 요청 재시도 성공
+        // 클라이언트가 보낸 요청의 기록을 확인하는 줄
+        assertThat(client.log()).containsExactly(
+                "POST /me/sync -> 401", "POST /auth/refresh -> 200", "POST /me/sync -> 200"
+        );
+
+        // 재시도한 요청이 정상 반영된다
+        assertThat(response.number(APPLIED_THROUGH_SEQ)).isEqualTo(3);
+        assertThat(response.<Object>read(REJECTED)).isNull();
+        assertThat(response.number(PROGRESS_GOLD)).isEqualTo(18);
+        assertThat(response.number(PROGRESS_NODES_LENGTH)).isEqualTo(1);
+
+        // 401로 막힌 첫 요청은 동기화 엔진까지 가지 않아 sync_log에 남지 않고, 재시도한 seq 1~3이 반영으로 한 번씩만 기록된다
+        assertThat(results(client)).containsOnly(SyncLogResult.APPLIED).hasSize(3);
+    }
+
+    /**
+     * 시나리오 7(토큰 없는 요청): 액세스 토큰 없이 동기화를 보내면 401이고, 공통 오류 형식(UNAUTHORIZED)과 WWW-Authenticate: Bearer 헤더가 온다.
+     * 토큰이 없으니 클라이언트의 자동 갱신(call)을 거치지 않고 sendRaw로 그대로 보낸다.
+     */
+    @Test
+    void aSyncWithoutAnAccessTokenIsUnauthorized() {
+        FakeClient client = startedClient();
+
+        // 토큰 없이 동기화를 보냈을 때 서버가 401로 막는지
+        FakeClient.Response response = client.sendRaw("POST", "/me/sync", "{\"logs\":[]}",
+                "Content-Type", "application/json"
+        );
+
+        // 상태 코드가 401
+        // 에러 코드($.error.code)가 UNAUTHORIZED
+        // WWW-Authenticate 헤더가 Bearer
+        // Content-Type이 application/json으로 시작 일 때 테스트 통과
+        assertThat(response.status()).isEqualTo(401);
+        assertThat(response.errorCode()).isEqualTo("UNAUTHORIZED");
+        assertThat(response.header("WWW-Authenticate")).isEqualTo("Bearer");
+        assertThat(response.header("Content-Type")).startsWith("application/json");
+
+        // 토큰이 없어서 요청이 엔진까지 가지 않았으므로 아무것도 기록되지 않았다
+        assertThat(results(client)).isEmpty();
     }
 
     // ---------- 도우미 ----------
