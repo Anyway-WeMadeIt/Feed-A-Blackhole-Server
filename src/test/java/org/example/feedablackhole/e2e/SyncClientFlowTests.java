@@ -41,6 +41,14 @@ class SyncClientFlowTests {
     @Autowired
     private SyncLogRecordRepository logRepository;
 
+    private static final String APPLIED_THROUGH_SEQ = "$.appliedThroughSeq";
+    private static final String REJECTED = "$.rejected";
+    private static final String PROGRESS_LAST_APPLIED_SEQ = "$.progress.lastAppliedSeq";
+    private static final String PROGRESS_GOLD = "$.progress.gold";
+    private static final String PROGRESS_NODES_LENGTH = "$.progress.nodes.length()";
+    private static final String PROGRESS_GROWTH_STAGE = "$.progress.growthStage";
+    private static final String PROGRESS_NODES = "$.progress.nodes";
+
     // ---------- 시나리오 ----------
 
     /**
@@ -54,17 +62,87 @@ class SyncClientFlowTests {
         FakeClient.Response response = client.sync(SyncSamples.request()).expect(200);
 
         // 6개 모두 반영되고 거부된 로그는 없다
-        assertThat(response.number("$.appliedThroughSeq")).isEqualTo(6);
-        assertThat(response.<Object>read("$.rejected")).isNull();
+        assertThat(response.number(APPLIED_THROUGH_SEQ)).isEqualTo(6);
+        assertThat(response.<Object>read(REJECTED)).isNull();
 
         // 진행도: 마지막 로그가 새 게임이므로 Gold 0, 성장도 0, 산 노드 없음. 반영한 마지막 번호만 6이다
-        assertThat(response.number("$.progress.lastAppliedSeq")).isEqualTo(6);
-        assertThat(response.number("$.progress.gold")).isEqualTo(0);
-        assertThat(response.number("$.progress.growthStage")).isEqualTo(0);
-        assertThat(response.<List<Object>>read("$.progress.nodes")).isEmpty();
+        assertThat(response.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(6);
+        assertThat(response.number(PROGRESS_GOLD)).isEqualTo(0);
+        assertThat(response.number(PROGRESS_GROWTH_STAGE)).isEqualTo(0);
+        assertThat(response.<List<Object>>read(PROGRESS_NODES)).isEmpty();
 
         // sync_log에는 6건 모두 반영(APPLIED)으로 기록된다
         assertThat(results(client)).containsOnly(SyncLogResult.APPLIED).hasSize(6);
+    }
+
+    /**
+     * 시나리오 1b(나눠 보내기): 샘플 로그를 seq 1~3, 이어서 4~6의 두 요청으로 나눠 보내도 한 번에 보낸 것과 같은 결과다.
+     * 1~3 뒤에는 결산으로 번 Gold 20에서 구매 비용 2를 뺀 18이 남고, 이 값이 seq 4(판 시작)의 startGold와 같다.
+     */
+    @Test
+    void sampleRequestCanBeSentInTwoParts() {
+        FakeClient client = startedClient();
+
+        // 첫 번째 요청(seq 1~3): 판 시작, 결산(Gold 20), timer-01 구매(비용 2)
+        FakeClient.Response first = client.sync(SyncSamples.logs(1, 3)).expect(200);
+
+        assertThat(first.number(APPLIED_THROUGH_SEQ)).isEqualTo(3);
+        assertThat(first.<Object>read(REJECTED)).isNull();
+        assertThat(first.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(3);
+        assertThat(first.number(PROGRESS_GOLD)).isEqualTo(18);
+        assertThat(first.number(PROGRESS_NODES_LENGTH)).isEqualTo(1);
+        assertThat(first.text("$.progress.nodes[0].nodeId")).isEqualTo("timer-01");
+        assertThat(first.number("$.progress.nodes[0].rank")).isEqualTo(1);
+
+        // 두 번째 요청(seq 4~6): 판 시작, 결산, 새 게임. 한 번에 보낸 것(시나리오 1)과 같은 결과다
+        FakeClient.Response second = client.sync(SyncSamples.logs(4, 6)).expect(200);
+
+        assertThat(second.number(APPLIED_THROUGH_SEQ)).isEqualTo(6);
+        assertThat(second.<Object>read(REJECTED)).isNull();
+        assertThat(second.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(6);
+        assertThat(second.number(PROGRESS_GOLD)).isEqualTo(0);
+        assertThat(second.number(PROGRESS_GROWTH_STAGE)).isEqualTo(0);
+        assertThat(second.<List<Object>>read(PROGRESS_NODES)).isEmpty();
+
+        // 두 요청에 걸쳐 sync_log 6건 모두 반영으로 기록된다
+        assertThat(results(client)).containsOnly(SyncLogResult.APPLIED).hasSize(6);
+    }
+
+    /**
+     * 시나리오 2(재전송): 이미 반영한 로그를 다시 보내도 이중으로 반영되지 않는다. 서버는 seq가 이미 반영한 번호 이하인 로그를
+     * 처리기에 보내지 않고 SKIPPED로 기록한다. 일부만 겹치는 요청(seq 2~5)에서는 겹치는 앞부분(2, 3)만 건너뛰고 새 로그(4, 5)만 반영한다.
+     */
+    @Test
+    void resendingAppliedLogsDoesNotApplyThemTwice() {
+        FakeClient client = startedClient();
+        client.sync(SyncSamples.logs(1, 3)).expect(200);
+
+        // 같은 로그를 그대로 다시 보낸다(네트워크가 끊겨 응답을 못 받은 클라이언트가 다시 보내는 경우) -> 재전송
+        FakeClient.Response resent = client.sync(SyncSamples.logs(1, 3)).expect(200);
+
+        assertThat(resent.number(APPLIED_THROUGH_SEQ)).isEqualTo(3);
+        assertThat(resent.<Object>read(REJECTED)).isNull();
+        assertThat(resent.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(3);
+        assertThat(resent.number(PROGRESS_GOLD)).isEqualTo(18);
+        assertThat(resent.number(PROGRESS_NODES_LENGTH)).isEqualTo(1);
+        assertThat(resent.number("$.progress.nodes[0].rank")).isEqualTo(1);
+
+        // 일부만 겹치는 요청: 2, 3은 이미 반영했으니 건너뛰고 4, 5만 반영한다
+        FakeClient.Response overlapping = client.sync(SyncSamples.logs(2, 5)).expect(200);
+
+        assertThat(overlapping.number(APPLIED_THROUGH_SEQ)).isEqualTo(5);
+        assertThat(overlapping.<Object>read(REJECTED)).isNull();
+        assertThat(overlapping.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(5);
+        assertThat(overlapping.number(PROGRESS_GOLD)).isEqualTo(36);
+        assertThat(overlapping.number(PROGRESS_NODES_LENGTH)).isEqualTo(1);
+
+        // sync_log: 처음 3건(1~3) 반영, 재전송 3건(1~3) 건너뜀, 겹친 요청에서 2건(2~3) 건너뜀 + 2건(4~5) 반영
+        assertThat(results(client)).containsExactly(
+                SyncLogResult.APPLIED, SyncLogResult.APPLIED, SyncLogResult.APPLIED,
+                SyncLogResult.SKIPPED, SyncLogResult.SKIPPED, SyncLogResult.SKIPPED,
+                SyncLogResult.SKIPPED, SyncLogResult.SKIPPED,
+                SyncLogResult.APPLIED, SyncLogResult.APPLIED
+        );
     }
 
     // ---------- 도우미 ----------
