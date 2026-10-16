@@ -278,7 +278,126 @@ public interface KindSetup {
 | 성장 공급·시작 공급 | `GameSessionFactory.StartSupplyOf` | 같은 순서(콘텐츠 시작 공급 → 보너스 → 변환 사슬 위상 정렬) |
 | 황금 치명 보너스 | `(long) Math.Round(gold * critRewardScale, MidpointRounding.AwayFromZero)` | long × float이라 float 곱셈 |
 
-- 일치 여부는 C#이 생성한 기대값 표(W4-1a, 에디터 도구 `Editor/SyncFixtures`)로 확인한다. 이 표가 이 장의 실행 가능한 기준이다. 표는 콘텐츠 버전에 묶여 있어 `contentVersion`을 함께 담고, 서버 콘텐츠 버전과 다르면 다시 만들어야 한다.
+- 일치 여부는 C#이 생성한 기대값 표(W4-1a, 에디터 도구 `Editor/SyncFixtures`)로 확인한다(형식은 1.7a). 이 표가 이 장의 실행 가능한 기준이다. 표는 콘텐츠 버전에 묶여 있어 `contentVersion`을 함께 담고, 서버 콘텐츠 버전과 다르면 다시 만들어야 한다.
+
+### 1.7a 기대값 표 (W4-1a, W4-1b)
+
+C#이 실제 규칙으로 계산한 값을 JSON으로 내보내고, 서버 테스트(W4-1b)가 `BattleRules`의 결과와 **완전히 같은지** 확인한다. 1.7이 말하는 "실행 가능한 기준"이 이 파일이다.
+
+**파일**
+
+| 항목 | 내용 |
+|---|---|
+| 서버 위치 | `src/test/resources/fixtures/rules-expected.json` (서버 저장소에 커밋한다) |
+| 만드는 곳 | 클라이언트 에디터 메뉴 `BlackHole > Sync Fixtures > Export Rules Table...` (A, W4-1a) |
+| 입력 콘텐츠 | 클라이언트의 **실제 콘텐츠**(`GameContentSetup`). 서버 테스트도 샘플 묶음이 아니라 **실제 묶음**(`src/main/resources/content`)을 읽는다(C32) |
+| 결정성 | 같은 콘텐츠면 같은 바이트다. 시각, 경로, 도구 버전 같은 값은 넣지 않는다. 키 순서는 아래 예시 그대로, 들여쓰기 2칸(내보내기 도구의 `PyJson`) |
+| 수 표기 | 정수(`long`, `int`)는 정수, `float`은 1.4와 같은 가장 짧은 왕복 표기. 서버는 `Float.parseFloat`, `Long.parseLong`으로 읽는다 |
+
+**구조**: 성장도(stage)와 산 노드(loadout)를 나눈다. `RunSetup`에서 성장도는 레벨과 이정표만, 노드는 시간·공급·적 구성만 정하므로 두 축은 독립이다. 서버 테스트가 둘을 교차해 돌리면 의도하지 않은 결합도 잡힌다.
+
+```json
+{
+  "formatVersion": 1,
+  "contentVersion": "4ab481c6a60d6e49",
+  "stages": [
+    {
+      "growthStage": 0,
+      "startLevel": 0,
+      "goalLevel": 10,
+      "startExp": 0,
+      "nextMilestone": { "level": 10, "targetGold": 690000 },
+      "levelForExp": [ [0, 0], [9, 0], [10, 1] ],
+      "milestoneRewards": [ [0, 690000], [689999, 1], [690000, 0], [690001, 0] ]
+    }
+  ],
+  "loadouts": [
+    {
+      "name": "empty",
+      "nodes": { },
+      "stats": { "timer": { "value": 12, "gain": 0 } },
+      "timeLimitSeconds": 12,
+      "growthTimeSeconds": 0,
+      "killTimeBonusSeconds": 0.3,
+      "startSupply": [ { "enemyId": "asteroid", "count": 20 } ],
+      "kinds": [
+        {
+          "enemyId": "asteroid",
+          "pickup": false,
+          "maxSize": 1,
+          "tierPossible": [ true, false, false, false, false, false ],
+          "goldenPossible": false,
+          "timeChance": 0,
+          "golden": null,
+          "gold": [ [1], [6] ],
+          "goldGolden": null,
+          "exp": [ [1], [2] ],
+          "critBonus": null
+        }
+      ]
+    }
+  ]
+}
+```
+
+위 값은 형식을 보여 주기 위한 예시다(실제 값은 내보내기 도구가 채운다).
+
+**`stages[]`**: 성장도 0부터 마지막(`HqGrowthDefinition.maxStage()`)까지 모두. 서버 비교 대상은 `RunSetup`의 같은 이름 메서드다.
+
+| 필드 | 원본(클라이언트) | 서버 비교 대상 |
+|---|---|---|
+| `startLevel`, `goalLevel`, `startExp` | `Hq.StartLevel`, `Hq.GoalLevel`, 시작 레벨의 누적 EXP | `startLevel()`, `goalLevel()`, `startExp()` |
+| `nextMilestone` | 다음 이정표(`level`, `targetGold`). 마지막 이정표 뒤면 `null` | `nextMilestone()` (비어 있음 = `null`) |
+| `levelForExp` | `[exp, level]` 쌍. 클라이언트 `Hq`에 EXP를 더해 레벨을 올린 결과(`RaiseLevels`) | `levelForExp(exp)` |
+| `milestoneRewards` | `[현재 Gold, 보상]` 쌍. `HqMilestone.RewardFor` | `nextMilestone().rewardFor(gold)`. 다음 이정표가 없으면 빈 배열 |
+
+- `levelForExp`의 exp 목록(오름차순, 중복 없음, 0 이상): `startExp − 1`(0 이상일 때), `startExp`, 그리고 이 성장도의 시작 레벨 바로 위 레벨부터 레벨표 끝까지 각 레벨의 누적 EXP `t`에 대해 `t − 1`, `t`, `t + 1`. 목표 레벨에서 멈추는지와 사다리 끝에서 멈추는지가 함께 확인된다.
+- `milestoneRewards`의 Gold 목록: `0`, `1`, `target − 1`, `target`, `target + 1`, `2 × target`(0 미만 제외, 중복 제거).
+
+**`loadouts[]`**: 아래 6종, 이 순서로 모두 넣는다(C33).
+
+| `name` | 산 노드 |
+|---|---|
+| `empty` | 없음 |
+| `partial-10`, `partial-25`, `partial-50`, `partial-75` | 싼 노드부터 사는 정책(`CheapestFirstBuyer`: 지금 살 수 있는 노드 중 다음 Rank가 가장 싼 것, 같은 값이면 노드 id 순)으로 Gold 제한 없이 끝까지 산 구매 순서에서, 총 구매 횟수 `N`의 `p`%(`floor(N × p / 100)`번째 구매까지)를 산 상태. 앞 상태가 뒤 상태에 포함된다 |
+| `all` | 모든 노드를 마지막 Rank까지 산 상태(노출 여부와 무관) |
+
+| 필드 | 원본(클라이언트) | 서버 비교 대상 |
+|---|---|---|
+| `nodes` | 노드 id → Rank(산 노드만, 키 순서는 노드 배치 순서) | 입력: `upgradesFor(nodes)` |
+| `stats` | `battle.json`이 참조하는 모든 statId의 `value`, `gain`(`UpgradeStatValues.ValueOf`, `GainOf`). 키 순서는 `battle.json`을 위에서 아래로 읽으며 처음 참조되는 순서(최상위 `stats`, 이어서 `enemies[]` 순서대로 `mass`, `size`, `startSupply`, `growthSupply`, `upgrade`, `timeChance`, `traitChance`(성질 순서), `goldenMultiplier`, `goldenCritChance`, `goldenCritRewardScale`) | `valueOf(statId)`, `gainOf(statId)` |
+| `timeLimitSeconds`, `growthTimeSeconds`, `killTimeBonusSeconds` | `GameSession.StartInfo.TimeLimitSeconds`, 성장 시간(`HqUpgradeStats.GrowthTimeFrom`), 시간 추가 1회의 초 | `timeLimitSeconds()`, `growthTimeSeconds()`, `killTimeBonusSeconds()` |
+| `startSupply` | `GameSession.StartInfo.StartSupply` | `startSupply()` (순서 포함) |
+| `kinds[]` | `battle.json`의 `enemies` 순서 그대로 | `kind(enemyId)` |
+
+**`kinds[]`** 한 항목 (서버 비교 대상은 `KindSetup`의 같은 이름 메서드):
+
+| 필드 | 원본(클라이언트) | 비고 |
+|---|---|---|
+| `enemyId`, `pickup` | 종류와 수거형 여부 | |
+| `maxSize` | 이 판 구성의 `Size` | `maxSize()` |
+| `tierPossible` | 색 등급마다 `TierRatios[tier] > 0` | `tierPossible(tier)`. 색 등급 수(공급 종류 6, 수거형 1)만큼 |
+| `goldenPossible` | 황금 성질이 있고 생성 확률이 0보다 큼 | `goldenPossible()` |
+| `timeChance` | 이 판 구성의 `TimeChance` | `timeChance()` |
+| `golden` | 노드가 반영된 황금 수치(`multiplier`, `critChance`, `critRewardScale`). 황금 성질이 없으면 `null` | `golden()` |
+| `gold`, `exp` | `[tier][size − 1]`. 크기는 1부터 `maxSize`까지, 색 등급은 전부(질량이 0인 색도 넣는다). 황금이 아닌 개체의 값(`EnemyStatTable.Of`) | `goldOf(tier, size, false)`, `expOf(tier, size)` |
+| `goldGolden` | `gold`와 같은 모양, 황금 개체의 Gold(황금 배율 반영). 황금 성질이 없으면 `null` | `goldOf(tier, size, true)` |
+| `critBonus` | `gold`와 같은 모양. 황금 치명 보너스, `DeathRewards`와 같은 식(`long × float`을 float 곱셈으로, .5는 0에서 먼 쪽으로 반올림. C28). 황금 성질이 없으면 `null` | `goldenCritBonusOf(tier, size)` |
+
+**서버 테스트(W4-1b)가 지킬 것**
+
+- 비교는 **완전 일치**다. float은 비트 비교(`Float.floatToIntBits`), long은 `==`다. 허용 오차를 두지 않는다.
+- 서버 콘텐츠는 실제 묶음이다(`ContentBundleLoader`로 `/content/`를 읽는다. `RealContentRulesTests`와 같은 방식). 파일의 `contentVersion`이 서버 목차의 값과 다르면 값을 비교하지 않고 "픽스처 재생성 필요"로 실패한다.
+- 모든 loadout에서 `upgradesFor(nodes)`를 만들고, 모든 stage에서 `setupFor(stage, upgrades)`를 만든다. loadout 항목(`stats`, 시간, `startSupply`, `kinds`)은 모든 stage에서, stage 항목은 모든 loadout에서 같아야 한다(교차 조합 전체).
+- `goldGolden`·`critBonus`가 `null`인 종류는 `goldenPossible() == false`와 `golden()`이 비어 있음도 함께 확인한다.
+- 값이 어긋나면 `stats`(합산·clamp 단계)와 그 아래 값(규칙 단계)을 나눠 보고하도록 메시지를 쓴다. 어느 loadout의 어느 필드인지(예: `partial-50 / planet / goldGolden[2][1]`)가 메시지에 나와야 한다.
+
+**내보내기 도구(W4-1a)가 지킬 것**
+
+- 클라이언트가 예외를 던지는 상태(예: 성질 확률 합이 100%를 넘는 `all`)는 건너뛰지 않고 내보내기를 실패시킨다.
+- 같은 콘텐츠로 두 번 내보내면 파일이 바이트까지 같아야 한다.
+- 파일의 `contentVersion`은 클라이언트가 계산한 서버 콘텐츠 버전(`ServerContent.VersionOf`)이다.
+- 콘텐츠를 바꾸면 W0-1의 묶음 내보내기 뒤에 이 표도 다시 내보낸다(계획서 4.1의 6).
 
 ### 1.8 결정 사항 (1장, 확정)
 
@@ -291,7 +410,10 @@ public interface KindSetup {
 | C5 | 서버 전투 계산은 BigDecimal이 아니라 C#과 같은 float·double로 한다 | 정확한 등식 검사를 위해서다. 노드 비용(정수)은 기존 BigDecimal 모델을 그대로 쓴다 |
 | C28 | 황금 치명 보너스는 long × float을 float 곱셈으로 계산한다 | 클라이언트도 float 곱셈이다. double로 곱하면 큰 Gold에서 값이 달라져 S5, S6 등식이 실패한다 |
 | C29 | UpgradeContentCheck는 서버 코드로 옮기지 않고 테스트로 확인한다 | 콘텐츠 작성 실수를 막는 검사라 요청 처리에는 필요 없다. 테스트가 같은 확인을 한다 |
-| C30 | 서버 테스트는 샘플 묶음 위에서 진행한다 | 샘플 로그(계약 3.8)가 샘플 묶음 기준이고, 샘플은 값이 고정이라 실제 콘텐츠가 바뀌어도 테스트가 깨지지 않는다 |
+| C30 | 서버 테스트는 샘플 묶음 위에서 진행한다. 단 실제 콘텐츠에 묶인 픽스처 테스트(W4-1b, W4-2b)는 예외로, 실제 묶음(`src/main/resources/content`)을 쓴다(C32) | 샘플 로그(계약 3.8)가 샘플 묶음 기준이고, 샘플은 값이 고정이라 실제 콘텐츠가 바뀌어도 테스트가 깨지지 않는다 |
+| C32 | 이식 검증 픽스처(기대값 표, 골든 로그)는 클라이언트의 실제 콘텐츠로 만들고, 그 테스트는 서버의 실제 묶음 위에서 돈다 | 클라이언트 콘텐츠가 확정되어 마무리 검증 단계다. 서버에 옮겨 와 버전을 맞춘 뒤(`contentVersion` 일치) 그 값을 기준으로 이식을 검증한다. 콘텐츠가 바뀌면 픽스처 재생성이 필요하다고 테스트가 알린다 |
+| C33 | 기대값 표의 노드 상태(loadout)는 `empty`, `partial-10/25/50/75`, `all` 6종으로 한다. 노드 하나씩 단독으로 산 상태는 넣지 않는다 | 구매 순서가 결정적이고 파일이 작다. 단독 진단은 필요할 때 더한다 |
+| C34 | 기대값 표는 성장도(stage)와 산 노드(loadout)를 나눠 담고 서버 테스트가 교차해서 확인한다 | 두 축이 독립이라 파일이 작아지고, 서버 구현이 둘을 섞어 쓰면 교차 확인에서 잡힌다 |
 
 ### 1.9 산출물
 
@@ -299,7 +421,8 @@ public interface KindSetup {
 |---|---|---|
 | 묶음 목차, 버전 계산(기준 구현) | `content/ContentManifest`, `content/ContentVersion` | W0-3(B), W0-1·W0-2(A·C가 C#으로 같은 계산을 구현) |
 | 전투 콘텐츠 객체(1.5) | `battle/content/*` | W0-3, W1-4(B), W1-6(A) |
-| 전투 규칙(1.6~1.7) | `battle/rules/*`: 인터페이스와 구현(`ContentBattleRules` 빈, `NodeUpgradeValues`, `RunComposition`, `KindComposition`, `UpgradeChain`, `MassRule`, `SizeRule`, `StartSupply`, `Rounding`) | **구현 완료**(W1-4, B). 쓰는 곳: W1-5(B), W1-6(A). C# 기대값 표 일치 확인은 W4-1b |
+| 전투 규칙(1.6~1.7) | `battle/rules/*`: 인터페이스와 구현(`ContentBattleRules` 빈, `NodeUpgradeValues`, `RunComposition`, `KindComposition`, `UpgradeChain`, `MassRule`, `SizeRule`, `StartSupply`, `Rounding`) | **구현 완료**(W1-4, B). 쓰는 곳: W1-5(B), W1-6(A). C# 기대값 표 일치 확인은 W4-1b(형식은 1.7a) |
+| 기대값 표(1.7a) | `src/test/resources/fixtures/rules-expected.json`(W4-1a가 만들고 서버에 커밋), 서버 테스트 W4-1b | W4-1a(A), W4-1b(B) |
 | 샘플 묶음 | `src/test/resources/content-sample/` | W0-3 로더 테스트(B) |
 | 테스트 | `ContentVersionTests`(샘플 묶음의 목차 버전과 Java 계산이 같은지), `HqGrowthDefinitionTests` | - |
 
