@@ -1,19 +1,25 @@
 package org.example.feedablackhole.e2e;
 
+import com.jayway.jsonpath.JsonPath;
 import org.example.feedablackhole.TestcontainersConfiguration;
 import org.example.feedablackhole.support.FakeClient;
 import org.example.feedablackhole.support.MutableClock;
 import org.example.feedablackhole.support.SyncSamples;
+import org.example.feedablackhole.sync.entity.BattleRun;
+import org.example.feedablackhole.sync.entity.BattleRunStatus;
 import org.example.feedablackhole.sync.entity.SyncLogRecord;
 import org.example.feedablackhole.sync.entity.SyncLogResult;
+import org.example.feedablackhole.sync.repository.BattleRunRepository;
 import org.example.feedablackhole.sync.repository.SyncLogRecordRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,6 +47,12 @@ class SyncClientFlowTests {
     @Autowired
     private SyncLogRecordRepository logRepository;
 
+    @Autowired
+    private BattleRunRepository runRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     // ---------- 응답의 JSON 경로(동기화 응답: appliedThroughSeq, rejected, progress) ----------
 
     // 서버가 이 요청을 처리한 뒤 반영한 마지막 로그 번호(응답 최상위). 정상이면 보낸 마지막 seq, 거부되면 거부 앞까지다
@@ -63,6 +75,13 @@ class SyncClientFlowTests {
 
     // 진행도의 산 노드 목록(처음 산 순서, 각 항목은 nodeId와 rank)
     private static final String PROGRESS_NODES = "$.progress.nodes";
+
+    private static final String START_GOLD_MISMATCH = "START_GOLD_MISMATCH";
+    private static final String SETTLEMENT = "SETTLEMENT";
+    private static final String SETTLEMENT_GOLD_MISMATCH = "SETTLEMENT_GOLD_MISMATCH";
+    private static final String START_GOLD = "startGold";
+    private static final String TIME_LIMIT_SECONDS = "timeLimitSeconds";
+    private static final String INVALID_REQUEST = "INVALID_REQUEST";
 
     // ---------- 시나리오 ----------
 
@@ -229,7 +248,7 @@ class SyncClientFlowTests {
         FakeClient.Response response = client.sync(SyncSamples.logs(1, 1)[0], SyncSamples.logs(3, 3)[0]);
 
         assertThat(response.status()).isEqualTo(400);
-        assertThat(response.errorCode()).isEqualTo("INVALID_REQUEST");
+        assertThat(response.errorCode()).isEqualTo(INVALID_REQUEST);
 
         // 첫 로그(seq 1)도 반영되지 않았다
         FakeClient.Response progress = client.loadProgress().expect(200);
@@ -251,8 +270,8 @@ class SyncClientFlowTests {
 
         assertThat(rejected.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
         assertThat(rejected.number(REJECTED + ".seq")).isEqualTo(2);
-        assertThat(rejected.text(REJECTED + ".type")).isEqualTo("SETTLEMENT");
-        assertThat(rejected.text(REJECTED + ".code")).isEqualTo("SETTLEMENT_GOLD_MISMATCH");
+        assertThat(rejected.text(REJECTED + ".type")).isEqualTo(SETTLEMENT);
+        assertThat(rejected.text(REJECTED + ".code")).isEqualTo(SETTLEMENT_GOLD_MISMATCH);
 
         // 진행도(계약 3.8의 sync-response-rejected.json): seq 1까지만 반영되었고 Gold와 노드는 그대로다
         assertThat(rejected.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(1);
@@ -281,6 +300,63 @@ class SyncClientFlowTests {
         );
     }
 
+    /**
+     * 시나리오 5(RUN_START 불일치 후 계속): 판 시작의 값이 서버 계산과 다르면 거부하지 않고 의심 표시만 남긴 채 계속 처리한다(결정 D8).
+     * seq 1의 startGold를 999로 바꾸면 서버의 Gold(0)와 달라 START_GOLD_MISMATCH가 남지만, 이어지는 결산과 구매는
+     * 서버 값 기준으로 정상 처리된다. 판의 시작 Gold도 클라이언트가 보낸 999가 아니라 서버 값 0으로 기록된다.
+     */
+    @Test
+    void aSuspiciousRunStartIsAppliedAndTheFollowingLogsUseServerValues() {
+        FakeClient client = startedClient();
+        String[] sample = SyncSamples.logs(1, 3);
+        // 거짓 로그 생성 "payload": { "runId": "...", "startGold": 0, ... } "startGold": 0 -> 999로 수정
+        String suspiciousStart = SyncSamples.withPayloadField(sample[0], START_GOLD, 999);
+
+        FakeClient.Response response = client.sync(suspiciousStart, sample[1], sample[2]).expect(200);
+
+        // 거부 없이 3건 모두 반영되고, 결산(20)과 구매(2)는 서버 값 기준이라 Gold 18이다
+        assertThat(response.number(APPLIED_THROUGH_SEQ)).isEqualTo(3);
+        assertThat(response.<Object>read(REJECTED)).isNull();
+        assertThat(response.number(PROGRESS_GOLD)).isEqualTo(18);
+        assertThat(response.number(PROGRESS_NODES_LENGTH)).isEqualTo(1);
+
+        assertThat(results(client)).containsOnly(SyncLogResult.APPLIED).hasSize(3);
+
+        // 판에는 의심 사유가 남고(결산으로 SETTLED), 판의 시작 Gold는 서버 값이며, 계정의 의심 표시는 1이다
+        BattleRun run = runOf(client, runIdOf(sample[0]));
+
+        assertThat(run.getSuspiciousReasons()).isEqualTo(START_GOLD_MISMATCH);
+        assertThat(run.getStatus()).isEqualTo(BattleRunStatus.SETTLED);
+        assertThat(run.getStartGold()).isEqualTo(0);
+        assertThat(suspiciousCount(client)).isEqualTo(1);
+    }
+
+    /**
+     * 시나리오 5(허용 오차): 제한 시간만 0.001초 이내로 다르면 같다고 보아 의심이 남지 않는다(계약 4.4, 결정 C22).
+     */
+    @Test
+    void aTimeLimitWithinOneMillisecondLeavesNoSuspicion() {
+        FakeClient client = startedClient();
+
+        // 샘플의 판 시작 로그에서 timeLimitSeconds 하나만 서버 값(12)과 0.0005초 다르게 바꾼다. 나머지 값은 서버와 모두 같다
+        String start = SyncSamples.withPayloadField(SyncSamples.logs(1, 1)[0], TIME_LIMIT_SECONDS, 12.0005);
+
+        // 로그가 하나여도 배열로 넘겨야 {"logs":[...]}로 감싸진다(String 하나를 넘기면 요청 본문 전체로 보내진다)
+        FakeClient.Response response = client.sync(new String[]{start}).expect(200);
+
+        // 거부 없이 반영된다(어차피 의심은 거부 사유가 아니지만, 시나리오 5와 같은 확인을 둔다)
+        assertThat(response.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
+        assertThat(response.<Object>read(REJECTED)).isNull();
+
+        // 허용 오차 안이라 판에 의심 사유가 없다(suspicious_reasons가 null). 판은 결산 전이라 OPEN 상태로 열려 있다
+        BattleRun run = runOf(client, runIdOf(start));
+
+        assertThat(run.getSuspiciousReasons()).isNull();
+
+        // 계정에도 의심 표시가 쌓이지 않는다(의심이 있는 판 하나당 1씩 오르는 값이 0 그대로다)
+        assertThat(suspiciousCount(client)).isEqualTo(0);
+    }
+
     // ---------- 도우미 ----------
 
     // 서버 주소만 가진 클라이언트(아직 서버와 말하지 않음)
@@ -298,10 +374,32 @@ class SyncClientFlowTests {
 
     // 이 계정의 sync_log 처리 결과를 기록 순서대로 읽는다. 계정 번호는 GET /me로 알아낸다
     private List<SyncLogResult> results(FakeClient client) {
-        long accountId = client.call("GET", "/me", null).number("$.accountId");
+        return logRepository.findAllByAccountIdOrderByIdAsc(accountId(client)).stream()
+                .map(SyncLogRecord::getResult)
+                .toList();
+    }
 
-        return logRepository.findAllByAccountIdOrderByIdAsc(accountId)
-                .stream().map(SyncLogRecord::getResult).toList();
+    // 이 계정의 번호. GET /me로 알아낸다
+    private long accountId(FakeClient client) {
+        return client.call("GET", "/me", null).number("$.accountId");
+    }
+
+    // 이 계정의 판(battle_run). HTTP로는 볼 수 없어서(조회 API가 없다) DB에서 읽는다
+    private BattleRun runOf(FakeClient client, String runId) {
+        return runRepository.findByAccountIdAndRunId(accountId(client), runId).orElseThrow();
+    }
+
+    // 계정에 남은 의심 표시의 수(의심이 있는 판 하나당 1)
+    private int suspiciousCount(FakeClient client) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT suspicious_count FROM player_progress WHERE account_id = ?", Integer.class, accountId(client));
+
+        return Objects.requireNonNull(count);
+    }
+
+    // 로그 글자에서 판의 runId를 꺼낸다
+    private static String runIdOf(String logJson) {
+        return JsonPath.read(logJson, "$.payload.runId");
     }
 
 }
