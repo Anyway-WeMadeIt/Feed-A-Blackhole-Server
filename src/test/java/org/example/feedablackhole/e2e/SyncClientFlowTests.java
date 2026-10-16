@@ -82,6 +82,8 @@ class SyncClientFlowTests {
     private static final String START_GOLD = "startGold";
     private static final String TIME_LIMIT_SECONDS = "timeLimitSeconds";
     private static final String INVALID_REQUEST = "INVALID_REQUEST";
+    private static final String RUN_START = "RUN_START";
+    private static final String DUPLICATE_RUN_ID = "DUPLICATE_RUN_ID";
 
     // ---------- 시나리오 ----------
 
@@ -355,6 +357,42 @@ class SyncClientFlowTests {
 
         // 계정에도 의심 표시가 쌓이지 않는다(의심이 있는 판 하나당 1씩 오르는 값이 0 그대로다)
         assertThat(suspiciousCount(client)).isEqualTo(0);
+    }
+
+    /**
+     * 시나리오 5b(중복 runId): 이미 쓴 runId로 판 시작을 다시 보내면 DUPLICATE_RUN_ID로 거부하고 멈춘다.
+     * 첫 판을 결산하지 않은 채 같은 runId가 또 오는 경우라서, 거부하면서 열린 판을 포기로 닫으면 안 된다(거부할 때는 진행도를 바꾸지 않는다).
+     * 그래서 거부된 뒤에도 첫 판은 열려(OPEN) 있다.
+     */
+    @Test
+    void aDuplicateRunIdIsRejectedAndTheFirstRunStaysOpen() {
+        FakeClient client = startedClient();
+        String start = SyncSamples.logs(1, 1)[0];
+        String runId = runIdOf(start);
+
+        // 첫 판 시작(seq 1): 정상 반영되고 판이 열린다. 로그가 하나여도 배열로 넘긴다
+        FakeClient.Response first = client.sync(new String[]{start}).expect(200);
+
+        assertThat(first.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
+        assertThat(first.<Objects>read(REJECTED)).isNull();
+        assertThat(results(client)).containsExactly(SyncLogResult.APPLIED);
+        assertThat(runOf(client, runId).getStatus()).isEqualTo(BattleRunStatus.OPEN);
+
+        // 같은 runId의 판 시작을 seq 2로 다시 보낸다. 첫 판은 아직 결산하지 않았다
+        String duplication = SyncSamples.withLogField(start, "seq", 2);
+        FakeClient.Response second = client.sync(new String[]{duplication}).expect(200);
+
+        assertThat(second.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
+        assertThat(second.number(REJECTED + ".seq")).isEqualTo(2);
+        assertThat(second.text(REJECTED + ".type")).isEqualTo(RUN_START);
+        assertThat(second.text(REJECTED + ".code")).isEqualTo(DUPLICATE_RUN_ID);
+        assertThat(second.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(1);
+
+        // 첫 요청의 반영 1건에 이어, 두 번째 요청의 거부 1건이 기록된다
+        assertThat(results(client)).containsExactly(SyncLogResult.APPLIED, SyncLogResult.REJECTED);
+
+        // 거부했으므로 첫 판은 닫히지 않고 그대로 열려 있다(포기로 닫히지 않았다)
+        assertThat(runOf(client, runId).getStatus()).isEqualTo(BattleRunStatus.OPEN);
     }
 
     // ---------- 도우미 ----------
