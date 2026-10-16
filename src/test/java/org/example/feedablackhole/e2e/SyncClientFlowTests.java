@@ -65,46 +65,32 @@ class SyncClientFlowTests {
 
     // 서버가 이 요청을 처리한 뒤 반영한 마지막 로그 번호(응답 최상위). 정상이면 보낸 마지막 seq, 거부되면 거부 앞까지다
     private static final String APPLIED_THROUGH_SEQ = "$.appliedThroughSeq";
-
     // 거부된 로그(seq, type, code, message). 거부가 없으면 null이다
     private static final String REJECTED = "$.rejected";
-
     // 진행도 안의 마지막으로 반영한 로그 번호(서버 DB의 값). 다음 로그는 이 값 + 1이어야 한다
     private static final String PROGRESS_LAST_APPLIED_SEQ = "$.progress.lastAppliedSeq";
-
     // 진행도의 Gold
     private static final String PROGRESS_GOLD = "$.progress.gold";
-
     // 진행도의 산 노드 개수(JsonPath의 length() 함수)
     private static final String PROGRESS_NODES_LENGTH = "$.progress.nodes.length()";
-
     // 진행도의 블랙홀 성장도(결산에서 이정표에 닿으면 오른다)
     private static final String PROGRESS_GROWTH_STAGE = "$.progress.growthStage";
-
     // 진행도의 산 노드 목록(처음 산 순서, 각 항목은 nodeId와 rank)
     private static final String PROGRESS_NODES = "$.progress.nodes";
-
     // 의심 표시를 남길 판의 시작 Gold가 서버 값과 다를 때의 의심 사유(SuspicionReason의 이름 그대로)
     private static final String START_GOLD_MISMATCH = "START_GOLD_MISMATCH";
-
     // 거부된 로그의 type 값(결산 로그)
     private static final String SETTLEMENT = "SETTLEMENT";
-
     // 결산의 Gold가 처치 장부로 계산한 값과 다를 때의 거부 코드
     private static final String SETTLEMENT_GOLD_MISMATCH = "SETTLEMENT_GOLD_MISMATCH";
-
     // 판 시작 로그의 payload 필드 이름: 클라이언트가 말하는 시작 Gold
     private static final String START_GOLD = "startGold";
-
     // 판 시작 로그의 payload 필드 이름: 클라이언트가 말하는 제한 시간(초)
     private static final String TIME_LIMIT_SECONDS = "timeLimitSeconds";
-
     // 요청 형식이 잘못되었을 때의 오류 코드(예: 한 요청 안에서 seq가 1씩 증가하지 않음)
     private static final String INVALID_REQUEST = "INVALID_REQUEST";
-
     // 거부된 로그의 type 값(판 시작 로그)
     private static final String RUN_START = "RUN_START";
-
     // 이미 쓴 runId로 판 시작을 보냈을 때의 거부 코드
     private static final String DUPLICATE_RUN_ID = "DUPLICATE_RUN_ID";
 
@@ -450,7 +436,6 @@ class SyncClientFlowTests {
                 }
 
                 // 최종 진행도: 한 번만 반영된 값(Gold 20 - 2 = 18, timer-01 Rank 1)이다
-
                 FakeClient.Response progress = origin.loadProgress().expect(200);
 
                 assertThat(progress.number("$.lastAppliedSeq")).as("라운드 %d", round).isEqualTo(3);
@@ -465,6 +450,64 @@ class SyncClientFlowTests {
                     assertThat(countOf(origin, seq, SyncLogResult.SKIPPED)).as("라운드 %d, seq %d", round, seq).isEqualTo(1);
                 }
                 assertThat(results(origin)).as("라운드 %d", round).hasSize(6);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /**
+     * 시나리오 6b(동시 요청: 겹치는 범위): 한 기기는 seq 1~3, 다른 기기는 seq 1~5를 동시에 보낸다.
+     * 서버는 요청을 한 번에 하나씩 처리하므로, 어느 쪽이 먼저든 최종 결과는 같다. 1~3이 먼저면 1~5 요청이 4, 5만 반영하고,
+     * 1~5가 먼저면 1~3 요청은 모두 건너뛴다. 어느 경우든 반영(APPLIED)은 seq마다 정확히 1건이고 이중 적용이 없다.
+     * 한 번 통과로는 우연일 수 있어서 라운드마다 새 계정으로 15번 반복한다.
+     */
+    void overlappingRangesSentAtOnceEndInTheSameState() throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            // 같은 계정에 로그인한 두 기기(자격증명만 같고 토큰은 따로 받는다)
+            for (int round = 0; round < 15; round++) {
+                // deviceA와 deviceB는 보내는 일만 하고, origin은 같은 계정의 결과를 읽는 관찰자
+                FakeClient origin = startedClient();        // 새 계정을 만들고 로그인 (계정 X)
+                FakeClient deviceA = origin.anotherDevice(); // 계정 X의 자격증명을 복사한 다른 기기
+                FakeClient deviceB = origin.anotherDevice(); // 계정 X의 자격증명을 복사한 또 다른 기기
+                deviceA.start();
+                deviceB.start();
+
+                // 한 기기는 seq 1~3, 다른 기기는 seq 1~5를 동시에 보낸다
+                List<FakeClient.Response> responses = runTogether(pool,
+                        () -> deviceA.sync(SyncSamples.logs(1, 3)),
+                        () -> deviceB.sync(SyncSamples.logs(1, 5)));
+
+                // 둘 다 정상 응답이고 거부된 로그는 없다. 1~3 요청의 appliedThroughSeq는 처리 순서에 따라 3 또는 5, 1~5 요청은 항상 5다
+                FakeClient.Response partial = responses.get(0);
+                FakeClient.Response full = responses.get(1);
+
+                assertThat(partial.status()).as("라운드 %d", round).isEqualTo(200);
+                assertThat(partial.<Object>read(REJECTED)).as("라운드 %d", round).isNull();
+                assertThat(partial.number(APPLIED_THROUGH_SEQ)).as("라운드 %d", round).isIn(3L, 5L);
+                assertThat(full.status()).as("라운드 %d", round).isEqualTo(200);
+                assertThat(full.<Object>read(REJECTED)).as("라운드 %d", round).isNull();
+                assertThat(full.number(APPLIED_THROUGH_SEQ)).as("라운드 %d", round).isEqualTo(5);
+
+                // 최종 진행도: 어느 순서든 seq 1~5가 한 번씩만 반영된 값이다(Gold 18 + 결산 18 = 36, timer-01 Rank 1)
+                FakeClient.Response progress = origin.loadProgress().expect(200);
+
+                assertThat(progress.number("$.lastAppliedSeq")).as("라운드 %d", round).isEqualTo(5);
+                assertThat(progress.number("$.gold")).as("라운드 %d", round).isEqualTo(36);
+                assertThat(progress.number("$.nodes.length()")).as("라운드 %d", round).isEqualTo(1);
+                assertThat(progress.number("$.nodes[0].rank")).as("라운드 %d", round).isEqualTo(1);
+
+                // A가 먼저일 때:  A(1~3) APPLIED×3  →  B(1~5) SKIPPED×3(1,2,3) + APPLIED×2(4,5)
+                // B가 먼저일 때:  B(1~5) APPLIED×5  →  A(1~3) SKIPPED×3(1,2,3)
+                // sync_log: seq 1~5마다 반영(APPLIED)은 정확히 1건이고, 건너뜀(SKIPPED)은 겹친 seq 1~3에 한 번씩 총 3건이다
+                for (long seq = 1; seq <= 5; seq++) {
+                    assertThat(countOf(origin, seq, SyncLogResult.APPLIED)).as("라운드 %d, seq %d", round, seq).isEqualTo(1);
+                }
+                for (long seq = 1; seq <= 3; seq++) {
+                    assertThat(countOf(origin, seq, SyncLogResult.SKIPPED)).as("라운드 %d, seq %d", round, seq).isEqualTo(1);
+                }
+                assertThat(results(origin)).as("라운드 %d", round).hasSize(8);
             }
         } finally {
             pool.shutdownNow();
