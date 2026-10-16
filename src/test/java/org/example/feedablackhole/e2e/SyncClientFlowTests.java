@@ -18,8 +18,14 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,9 +53,11 @@ class SyncClientFlowTests {
     @Autowired
     private SyncLogRecordRepository logRepository;
 
+    // 판(battle_run)을 읽는 저장소. 판의 상태와 의심 사유는 HTTP 응답에 없어서 DB에서 직접 확인한다
     @Autowired
     private BattleRunRepository runRepository;
 
+    // 계정의 의심 표시 수(player_progress.suspicious_count)를 SQL로 읽는 데 쓴다
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
@@ -76,13 +84,28 @@ class SyncClientFlowTests {
     // 진행도의 산 노드 목록(처음 산 순서, 각 항목은 nodeId와 rank)
     private static final String PROGRESS_NODES = "$.progress.nodes";
 
+    // 의심 표시를 남길 판의 시작 Gold가 서버 값과 다를 때의 의심 사유(SuspicionReason의 이름 그대로)
     private static final String START_GOLD_MISMATCH = "START_GOLD_MISMATCH";
+
+    // 거부된 로그의 type 값(결산 로그)
     private static final String SETTLEMENT = "SETTLEMENT";
+
+    // 결산의 Gold가 처치 장부로 계산한 값과 다를 때의 거부 코드
     private static final String SETTLEMENT_GOLD_MISMATCH = "SETTLEMENT_GOLD_MISMATCH";
+
+    // 판 시작 로그의 payload 필드 이름: 클라이언트가 말하는 시작 Gold
     private static final String START_GOLD = "startGold";
+
+    // 판 시작 로그의 payload 필드 이름: 클라이언트가 말하는 제한 시간(초)
     private static final String TIME_LIMIT_SECONDS = "timeLimitSeconds";
+
+    // 요청 형식이 잘못되었을 때의 오류 코드(예: 한 요청 안에서 seq가 1씩 증가하지 않음)
     private static final String INVALID_REQUEST = "INVALID_REQUEST";
+
+    // 거부된 로그의 type 값(판 시작 로그)
     private static final String RUN_START = "RUN_START";
+
+    // 이미 쓴 runId로 판 시작을 보냈을 때의 거부 코드
     private static final String DUPLICATE_RUN_ID = "DUPLICATE_RUN_ID";
 
     // ---------- 시나리오 ----------
@@ -374,7 +397,7 @@ class SyncClientFlowTests {
         FakeClient.Response first = client.sync(new String[]{start}).expect(200);
 
         assertThat(first.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
-        assertThat(first.<Objects>read(REJECTED)).isNull();
+        assertThat(first.<Object>read(REJECTED)).isNull();
         assertThat(results(client)).containsExactly(SyncLogResult.APPLIED);
         assertThat(runOf(client, runId).getStatus()).isEqualTo(BattleRunStatus.OPEN);
 
@@ -393,6 +416,59 @@ class SyncClientFlowTests {
 
         // 거부했으므로 첫 판은 닫히지 않고 그대로 열려 있다(포기로 닫히지 않았다)
         assertThat(runOf(client, runId).getStatus()).isEqualTo(BattleRunStatus.OPEN);
+    }
+
+    /**
+     * 시나리오 6(동시 요청: 같은 로그): 같은 계정을 쓰는 두 기기가 같은 로그(seq 1~3)를 동시에 보내도 이중으로 반영되지 않는다.
+     * 서버는 계정의 진행도 행을 잠가 요청을 한 번에 하나씩 처리하므로, 먼저 온 쪽이 3건을 반영하고 늦게 온 쪽은
+     * 이미 반영된 로그로 보아 모두 건너뛴다(SKIPPED). 이중 적용이면 결산 Gold가 두 번 들어가거나 구매가 두 번 처리되어 값이 어긋난다.
+     * 한 번 통과로는 우연일 수 있어서 라운드마다 새 계정으로 15번 반복한다.
+     */
+    @Test
+    void twoDevicesSendingTheSameLogsAtOnceApplyThemOnlyOnce() throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            // 같은 계정에 로그인한 두 기기(자격증명만 같고 토큰은 따로 받는다)
+            for (int round = 0; round < 15; round++) {
+                // deviceA와 deviceB는 보내는 일만 하고, origin은 같은 계정의 결과를 읽는 관찰자
+                FakeClient origin = startedClient();        // 새 계정을 만들고 로그인 (계정 X)
+                FakeClient deviceA = origin.anotherDevice(); // 계정 X의 자격증명을 복사한 다른 기기
+                FakeClient deviceB = origin.anotherDevice(); // 계정 X의 자격증명을 복사한 또 다른 기기
+                deviceA.start();
+                deviceB.start();
+
+                // 두 기기가 같은 seq 1~3을 동시에 보낸다
+                List<FakeClient.Response> responses = runTogether(pool,
+                        () -> deviceA.sync(SyncSamples.logs(1, 3)),
+                        () -> deviceB.sync(SyncSamples.logs(1, 3)));
+
+                // 둘 다 정상 응답이고 거부된 로그는 없다
+                for (FakeClient.Response response : responses) {
+                    assertThat(response.status()).as("라운드 %d", round).isEqualTo(200);
+                    assertThat(response.<Object>read(REJECTED)).as("라운드 %d", round).isNull();
+                    assertThat(response.number(APPLIED_THROUGH_SEQ)).as("라운드 %d", round).isEqualTo(3);
+                }
+
+                // 최종 진행도: 한 번만 반영된 값(Gold 20 - 2 = 18, timer-01 Rank 1)이다
+
+                FakeClient.Response progress = origin.loadProgress().expect(200);
+
+                assertThat(progress.number("$.lastAppliedSeq")).as("라운드 %d", round).isEqualTo(3);
+                assertThat(progress.number("$.gold")).as("라운드 %d", round).isEqualTo(18);
+                assertThat(progress.number("$.nodes.length()")).as("라운드 %d", round).isEqualTo(1);
+                assertThat(progress.number("$.nodes[0].rank")).as("라운드 %d", round).isEqualTo(1);
+
+                // sync_log: seq마다 반영(APPLIED)은 정확히 1건이고, 늦게 온 쪽의 3건은 건너뜀(SKIPPED)이다
+                // 같은 seq에 로그가 2줄씩(A의 것, B의 것) 있고, 그중 한 줄은 APPLIED, 다른 한 줄은 SKIPPED인지를 확인하는 것
+                for (long seq = 1; seq <= 3; seq++) {
+                    assertThat(countOf(origin, seq, SyncLogResult.APPLIED)).as("라운드 %d, seq %d", round, seq).isEqualTo(1);
+                    assertThat(countOf(origin, seq, SyncLogResult.SKIPPED)).as("라운드 %d, seq %d", round, seq).isEqualTo(1);
+                }
+                assertThat(results(origin)).as("라운드 %d", round).hasSize(6);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     // ---------- 도우미 ----------
@@ -438,6 +514,33 @@ class SyncClientFlowTests {
     // 로그 글자에서 판의 runId를 꺼낸다
     private static String runIdOf(String logJson) {
         return JsonPath.read(logJson, "$.payload.runId");
+    }
+
+    // 두 작업을 거의 동시에 시작해, 각 결과를 작업을 넘긴 순서대로 돌려준다
+    private static <T> List<T> runTogether(ExecutorService pool, Callable<T> first, Callable<T> second)
+            throws Exception {
+        CountDownLatch go = new CountDownLatch(1);
+        Future<T> a = pool.submit(() -> {
+            go.await();
+            return first.call();
+        });
+        Future<T> b = pool.submit(() -> {
+            go.await();
+            return second.call();
+        });
+        go.countDown();
+        List<T> results = new ArrayList<>();
+        results.add(a.get());
+        results.add(b.get());
+
+        return results;
+    }
+
+    // 이 계정의 sync_log에서 seq에 대한 기록 중 처리 결과가 result인 것의 수
+    private long countOf(FakeClient client, long seq, SyncLogResult result) {
+        return logRepository.findAllByAccountIdOrderByIdAsc(accountId(client)).stream()
+                .filter(record -> record.getSeq() == seq && record.getResult() == result)
+                .count();
     }
 
 }
