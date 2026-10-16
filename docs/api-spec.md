@@ -2,10 +2,11 @@
 
 클라이언트(Unity)와 서버(Spring Boot)의 통신 계약이다. 변경은 이 문서를 먼저 고친 뒤 구현에 반영한다.
 
-- 상태: **초안 v0.7** (2026-10-12). 설계와 근거는 [server-sync-plan.md](server-sync-plan.md)(이하 "계획서"), 담당과 순서는 [server-sync-assignment.md](server-sync-assignment.md), 콘텐츠 형식과 내부 인터페이스는 [server-sync-contracts.md](server-sync-contracts.md)에 있다.
+- 상태: **초안 v0.8** (2026-10-16). 설계와 근거는 [server-sync-plan.md](server-sync-plan.md)(이하 "계획서"), 담당과 순서는 [server-sync-assignment.md](server-sync-assignment.md), 콘텐츠 형식과 내부 인터페이스는 [server-sync-contracts.md](server-sync-contracts.md)에 있다.
 - v0.6과의 차이: 동기화를 **계정 단위 순번(`seq`)을 가진 로그** 방식으로 바꿨다. `batchId`·`baseRevision`·`BASE_MISMATCH`·`claimed`를 없앴고, 전투는 **판 시작(`RUN_START`)과 결산(`SETTLEMENT`) 두 로그**로 나눴다. `revision`은 `lastAppliedSeq`로 대체한다.
-- 구현 현황: 인증 전체(게스트 등록·로그인, 토큰 갱신·로그아웃), `GET /me`, 진행 데이터 불러오기(`GET /me/progress`), 공통 오류 응답이 구현되어 있다. 검증을 우회하던 저장(`PUT /me/progress`)과 초기화(`POST /me/progress/reset`)는 제거했다(W1-7).
-- 필드 타입·범위·필수 여부, 오류를 내는 위치, 한도, 거부 코드의 확정본은 [계약 3장](server-sync-contracts.md#3-로그동기화-json)이다. 이 문서에서 **(A0 확정)** 으로 표시한 값은 아직 잠정값이다.
+- v0.7과의 차이: 동기화와 네 로그 타입의 구현(W1-2~W1-6), 옛 저장·초기화 API와 `revision` 열의 제거(W1-7), 동기화 E2E(W1-8)를 구현 현황에 반영했다. 잠정이던 값 둘을 확정했다(로그인·동기화 타임아웃은 계약 C11, S8 허용 오차는 W1-6의 구현값).
+- 구현 현황: 인증 전체(게스트 등록·로그인, 토큰 갱신·로그아웃), `GET /me`, 진행 데이터 불러오기(`GET /me/progress`), 동기화(`POST /me/sync`)와 네 로그 타입(`NODE_PURCHASE`, `RESET`, `RUN_START`, `SETTLEMENT`)의 처리기, 공통 오류 응답이 구현되어 있다(W1-2~W1-6). 검증을 우회하던 저장(`PUT /me/progress`)과 초기화(`POST /me/progress/reset`)는 제거했고 `revision` 열도 지웠다(W1-7). 동기화 흐름은 `FakeClient`로 실제 HTTP에서 확인한다(W1-8).
+- 필드 타입·범위·필수 여부, 오류를 내는 위치, 한도, 거부 코드의 확정본은 [계약 3장](server-sync-contracts.md#3-로그동기화-json)이다. 아직 정해지지 않은 값은 맨 아래 [미정 항목](#미정-항목)에 모은다.
 
 ## 설계 원칙
 
@@ -103,7 +104,7 @@
 
 ### 클라이언트 로그인 흐름
 
-앱 시작 시 **백그라운드에서** 사용자 조작 없이 수행한다. 전체 과정에 타임아웃 하나를 둔다(예: 5초, **A0 확정**). 시간 안에 끝나지 않으면 그 실행은 오프라인으로 진행한다.
+앱 시작 시 **백그라운드에서** 사용자 조작 없이 수행한다. 타임아웃은 요청 하나가 5초, 로그인 전체가 8초이고, 동기화 요청 하나는 10초다(계약 C11). 시간 안에 끝나지 않으면 그 실행은 오프라인으로 진행한다.
 
 ```
 refreshToken 있음 → POST /auth/refresh ── 성공 ──────────────────────────────┐
@@ -121,7 +122,7 @@ API 호출 중 401 UNAUTHORIZED → POST /auth/refresh 후 같은 요청을 한 
 - 갱신·로그인 응답의 새 `refreshToken`은 **사용하기 전에 먼저 저장한다.** 저장하지 못한 채 앱이 종료되면 다음 실행에서 옛 토큰이 재사용 탐지에 걸려 계정의 리프레시 토큰이 모두 폐기된다. 이때는 `401 INVALID_REFRESH_TOKEN`을 받고 `guestId`·`guestSecret` 로그인으로 넘어가 복구된다.
 - 갱신 요청은 한 번에 하나만 보낸다. 같은 토큰으로 겹쳐 보내면 재사용 탐지에 걸린다.
 - `401 UNAUTHORIZED`로 거부된 요청은 서버가 처리하지 않았으므로 재시도해도 이중으로 적용되지 않는다.
-- 기준 구현은 `src/test/java/org/example/feedablackhole/support/FakeClient.java`이며, 동기화 구현과 함께 새 흐름을 따르도록 고친다(W1-8).
+- 기준 구현은 `src/test/java/org/example/feedablackhole/support/FakeClient.java`이며, 인증 흐름과 동기화(`sync`)를 구현한다(W1-8). 동기화 시나리오는 `e2e/SyncClientFlowTests`에서 확인한다.
 
 ### POST `/auth/refresh`
 
@@ -277,6 +278,9 @@ payload가 없다. 검증 없이 Gold, 성장도, 산 노드를 처음 상태로
 
 - 진행도를 바꾸지 않는다. 판(run)을 열고, 이미 열린 판이 있으면 그 판을 **포기**로 닫는다(보상 없음).
 - 서버는 자기 진행도로 같은 값을 계산해 비교한다. **값이 달라도 거부하지 않고** 판과 계정에 의심 표시만 남긴 뒤 판을 연다.
+    - 비교하는 값과 의심 사유: 성장도(`START_GROWTH_STAGE_MISMATCH`), 시작 Gold(`START_GOLD_MISMATCH`), 시작 Level(`START_LEVEL_MISMATCH`), 제한 시간(`TIME_LIMIT_MISMATCH`), 시작 공급(`START_SUPPLY_MISMATCH`).
+    - 제한 시간은 `|클라이언트 − 서버| ≤ 0.001`초이면 같다고 보고, 나머지는 정확히 같아야 한다(시작 공급은 종류·수·순서까지). 여러 값이 다르면 사유를 모두 남기고, 계정의 의심 표시는 의심이 있는 판 하나당 1 오른다.
+    - 판의 시작 Gold와 성장도는 클라이언트가 보낸 값이 아니라 서버 진행도의 값으로 기록한다.
 - `runId`가 이미 쓰인 값이면 거부한다(`DUPLICATE_RUN_ID`).
 
 #### `SETTLEMENT`: 판 결산
@@ -329,7 +333,7 @@ payload가 없다. 검증 없이 Gold, 성장도, 산 노드를 처음 상태로
 | S5 | `goldenCritCount` ≤ 황금 처치 수, `goldenCritBonusGold`가 가능한 범위 안이다 |
 | S6 | `earnedGold` = Σ(처치 수 × 항목 Gold) + `goldenCritBonusGold` |
 | S7 | `timeBonusCount` ≤ 수거형이 아닌 처치 수 |
-| S8 | `playedSeconds` ≤ 시작 제한 시간 + (`reachedLevel` − 시작 Level) × 성장 시간 + `timeBonusCount` × 처치 시간 보너스 (허용 오차 **A0 확정**) |
+| S8 | `playedSeconds` ≤ 시작 제한 시간 + (`reachedLevel` − 시작 Level) × 성장 시간 + `timeBonusCount` × 처치 시간 보너스. 이 상한에 0.01초와 상한의 0.01%를 더한 값까지 허용한다 |
 | S9 | `settledGold`, `nextGrowthStage`가 서버 계산과 같다 |
 
 통과하면 판을 결산 완료로 닫고, **서버가 계산한** 결산 금액과 성장도를 진행도에 적용한다.
@@ -347,11 +351,11 @@ payload가 없다. 검증 없이 Gold, 성장도, 산 노드를 처음 상태로
 
 1. 같은 계정의 동기화는 서버가 한 번에 하나씩 처리한다(진행도 행 잠금). 동시에 온 요청은 앞 요청이 끝난 뒤 처리된다.
 2. 로그를 **seq 순서대로** 처리한다. 각 로그는 직전 로그까지 적용된 상태에서 검증한다.
-   - `seq ≤ lastAppliedSeq`: 이미 반영된 로그다. **건너뛴다**(응답을 받지 못해 다시 보낸 경우).
-   - `seq > lastAppliedSeq + 1`: 앞 로그가 빠졌다. `SEQ_GAP`으로 거부한다.
-   - 검증에 통과하면 적용하고 `lastAppliedSeq = seq`.
-   - 검증에 실패하면 거부하고 **멈춘다.** 그 뒤의 로그는 처리하지 않는다.
-   - `RUN_START`의 값이 서버 계산과 다른 것은 실패가 아니다(의심 표시만).
+    - `seq ≤ lastAppliedSeq`: 이미 반영된 로그다. **건너뛴다**(응답을 받지 못해 다시 보낸 경우).
+    - `seq > lastAppliedSeq + 1`: 앞 로그가 빠졌다. `SEQ_GAP`으로 거부한다.
+    - 검증에 통과하면 적용하고 `lastAppliedSeq = seq`.
+    - 검증에 실패하면 거부하고 **멈춘다.** 그 뒤의 로그는 처리하지 않는다.
+    - `RUN_START`의 값이 서버 계산과 다른 것은 실패가 아니다(의심 표시만).
 3. 거부된 로그 직전까지 적용한 결과를 저장하고 응답한다.
 4. 서버는 받은 로그를 결과(적용·거부·건너뜀·미처리)와 함께 보관한다(감사·진단용).
 5. **멱등성은 seq로 보장한다.** 같은 로그를 다시 보내도 이미 반영된 seq는 건너뛰므로 이중으로 적용되지 않는다.
@@ -395,7 +399,7 @@ payload가 없다. 검증 없이 Gold, 성장도, 산 노드를 처음 상태로
           : 로컬 진행에 즉시 적용 → 로그를 진행도와 같은 원자적 쓰기로 저장(seq = 마지막 seq + 1)
             → 온라인이면 곧바로 POST /me/sync, 오프라인이면 쌓아 둔다
 앱 시작    : (백그라운드) 로그인 → 쌓인 로그를 POST /me/sync(없으면 빈 배열) → 응답의 progress로 게임 시작
-            이 과정이 끝나거나 타임아웃이 날 때까지 타이틀의 시작 버튼을 막는다
+            이 과정이 끝나거나 타임아웃이 날 때까지(로그인 8초 + 동기화 10초, 최대 18초) 타이틀의 시작 버튼을 막는다
 응답 처리  : appliedThroughSeq 이하의 대기 로그를 지운다
             rejected가 있으면 남은 대기 로그를 모두 폐기하고, 사용자에게 텍스트로 알린다
             progress로 로컬 진행도를 덮어쓴다
@@ -414,5 +418,5 @@ payload가 없다. 검증 없이 Gold, 성장도, 산 노드를 처음 상태로
 
 ## 미정 항목
 
-1. **S8 허용 오차 보정.** 상한 + 0.01초 + 상한의 0.01%로 구현했다(W1-6). 클라이언트 실측으로 보정은 아직 하지 않았다.
+1. **S8 허용 오차 보정.** 상한 + 0.01초 + 상한의 0.01%로 구현했다(W1-6). 클라이언트 실측(에디터 `Campaign Run`의 `playedSeconds`)으로 보정하는 것은 후속이다(W4-2a·W4-2b).
 2. **통계 검사(S10).** 초당 처치 수, 치명 확률, 시간 추가 확률의 이상치 검사는 이번 범위에서 뺐다(후속).

@@ -336,7 +336,7 @@ DTO만으로는 부족하다. 아래 계산식은 클라이언트 코드에 있�
 | W1-5 | S | S | W1-2, W1-4 | `RUN_START` 처리기, 의심 표시 |
 | W1-6 | S | M | W1-2, W1-4 | `SETTLEMENT` 처리기, `SettlementValidator`(S1~S9). **완료**(A, S10 제외) |
 | W1-7 | S | S | W1-3 | 옛 API 제거, `GET /me/progress`에 `lastAppliedSeq` 추가. **완료**(B, `revision` 열 제거 V4는 A) |
-| W1-8 | S | M | W1-2~6 | E2E(`FakeClient`): 순차 적용, 재전송, 누락, N번째 거부 시 N-1까지 반영, `RUN_START` 불일치 시 계속 진행, 동시 요청. CI에 테스트 단계 추가 |
+| W1-8 | S | M | W1-2~6 | E2E(`FakeClient`): 순차 적용, 재전송, 누락, N번째 거부 시 N-1까지 반영, `RUN_START` 불일치 시 계속 진행, 동시 요청. CI에 테스트 단계 추가. **완료**(B, 테스트는 별도 `Tests` 워크플로) |
 
 ### W2. 클라이언트 로그인
 

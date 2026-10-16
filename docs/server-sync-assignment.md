@@ -46,7 +46,8 @@
 - **2026-10-15 변경(7)**: B의 W1-5(판 시작 처리기)가 완료되었다(`feat/run-start`). 네 가지 로그 타입의 처리기가 모두 갖춰져 W1-8(E2E와 CI)을 시작할 수 있다.
 - **2026-10-15 변경(8)**: B의 W1-7(옛 API 정리)이 완료되었다(`feat/remove-old-progress-api`). `revision` 열 제거(V4)는 A가 같은 브랜치에서 맡았다. W1-8은 `FakeClient`의 옛 메서드가 이미 없는 상태에서 시작한다.
 - **2026-10-16 변경(9)**: C의 W3-4(동기화 전송기)가 완료되었다(클라이언트 `feat/asyncServer`). 리뷰에서 계약과 어긋난 부분(동기화 타임아웃, 오프라인 사유, 응답 seq 검사)을 고치고 테스트를 다시 썼다(작업 상세 W3-4). 로컬 서버로 M1 시나리오가 통과해 **M1 조건이 모두 갖춰졌다.** W1-6 남은 일 ②(결산 → 구매 로그 순서)도 함께 반영했다. `SyncSender`의 위치는 계약 5.2대로 Assembly-CSharp이 아니라 `BlackHole.Net`이다.
-- **2026-10-16 변경(10)**: W4-1a(이식 기대값 표 생성)를 C에서 A로 옮겼다. C의 작업 속도를 고려한 결정이고, 이제 형식도 A가 정한다(계약 1.7a). A 합계 17.5일 → 19일, C 합계 15.5일 → 14일이다. 이어서 **W4-1b(서버 이식 일치 테스트)도 B에서 A로 옮겼다**: 표를 검증하려면 테스트를 돌려 봐야 해서 한 사람이 함께 진행하는 편이 낫다(A 20일, B 15일). 마무리 검증 단계이므로 W4-1a·W4-1b·W4-2a·W4-2b의 픽스처와 그 서버 테스트는 샘플이 아니라 **실제 콘텐츠**를 쓴다(계약 C30, C32). 그 전에 서버 콘텐츠 묶음을 클라이언트의 현재 콘텐츠로 갱신했다(`contentVersion` `4ab481c6a60d6e49`, PR #28). 노드 수는 276개에서 263개로, 수치 `supernovaStar.hpDamage`는 `supernovaStar.damage`로 바뀌었다.
+- **2026-10-16 변경(10)**: B의 W1-8(E2E와 CI)이 완료되었다(`feat/e2e-and-ci`). 동기화 E2E 15개와 `Tests` 워크플로가 들어가 PR에서 `Checkstyle`과 `Test`가 따로 통과한다. 리뷰에서 응답 샘플 통째 비교를 더하고 `FakeClient.sync`의 본문 전체용을 `syncRaw`로 분리했다(작업 상세 W1-8). M3의 W1-8 조건이 갖춰졌고, 서버 쪽은 W4-1b·W4-2b·W5-2가 남았다.
+- **2026-10-16 변경(11)**: W4-1a(이식 기대값 표 생성)를 C에서 A로 옮겼다. C의 작업 속도를 고려한 결정이고, 이제 형식도 A가 정한다(계약 1.7a). A 합계 17.5일 → 19일, C 합계 15.5일 → 14일이다. 이어서 **W4-1b(서버 이식 일치 테스트)도 B에서 A로 옮겼다**: 표를 검증하려면 테스트를 돌려 봐야 해서 한 사람이 함께 진행하는 편이 낫다(A 20일, B 15일). 마무리 검증 단계이므로 W4-1a·W4-1b·W4-2a·W4-2b의 픽스처와 그 서버 테스트는 샘플이 아니라 **실제 콘텐츠**를 쓴다(계약 C30, C32). 그 전에 서버 콘텐츠 묶음을 클라이언트의 현재 콘텐츠로 갱신했다(`contentVersion` `4ab481c6a60d6e49`, PR #28). 노드 수는 276개에서 263개로, 수치 `supernovaStar.hpDamage`는 `supernovaStar.damage`로 바뀌었다.
 - **2026-10-14 변경(5)**: C의 W3-1(칸별 처치 집계)이 클라이언트 `dev`에 병합되어 **완료**다(PR #88, 병합 `10cfa25`). 결산 로그의 `kills`·`goldenCritCount`·`goldenCritBonusGold`·`timeBonusCount`가 실제 값으로 채워진다. W4-2a의 선행(W3-0, W3-1, W3-2)이 모두 풀렸고, 클라이언트 쪽 M2 조건(W3-1)도 갖춰졌다.
 
 ## 3. 일정 개요
@@ -237,7 +238,7 @@ B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 
 - **변이 확인**: 서버를 일부러 틀리게 바꾸면 모두 실패한다 — 치명 보너스를 double로 곱함(58개), 반올림을 HALF_EVEN으로(36개), 배율 곱을 float으로, 노드 합산에 float 오차(494개), 치명 보너스가 황금이 아닌 Gold를 씀(360개). 산술 확인 지점 없이는 앞의 세 가지를 놓쳤다(현재 콘텐츠가 그 경로를 쓰지 않기 때문).
 - **발견**: 산술 확인 지점이 클라이언트의 플랫폼 차이를 찾아냈다. 치명 보너스(`long × float`)를 Unity 에디터(Mono)는 중간 결과를 더 높은 정밀도로 들고 있다가 반올림해 `16777215 × 1.5`가 25165823이 되고, IL2CPP 빌드(Android, WebGL)와 서버(Java)는 25165822다. 클라이언트 `DeathRewards.CritBonusOf`가 곱 결과를 `(float)`로 확정하도록 고쳤다(계약 C36). 실제 게임 값에서는 결과가 같아 동작은 바뀌지 않는다.
 
-#### W1-8. E2E와 CI (M, 2.5일)
+#### W1-8. E2E와 CI (M, 2.5일) — 완료
 
 - **목표**: `FakeClient`로 실제 HTTP 흐름 E2E(등록 → 로그인 → 동기화: 순차 적용, 재전송, 누락, 거부 후 멈춤, 의심 표시 후 계속, 동시 요청)를 만들고, 이 테스트를 돌리는 **CI 워크플로를 코드 스타일 검사와 별개로** 추가한다(Testcontainers).
 - **선행**: W1-2, W1-3, W1-5, W1-6. W1-5(완료)가 끝난 뒤에 시작한다(`RUN_START` 처리기가 없으면 기본 샘플 시나리오가 `500`이다). W1-7과는 순서가 없다(아래 "W1-7과의 경계").
@@ -247,8 +248,8 @@ B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 
 **① `FakeClient`와 테스트 지원 (`src/test/java/.../support/`)**
 
 - `FakeClient`에 동기화 메서드를 **추가**한다. 요청은 서버 DTO가 아니라 JSON 문자열로 조립한다(기존 원칙).
-  - `Response sync(String requestJson)`: `call("POST", "/me/sync", requestJson)`. `call`을 거치므로 401이면 갱신 후 한 번 재시도하는 흐름이 그대로 적용된다.
-  - `Response sync(String... logJsons)`: 로그 객체 글자들을 `{"logs":[...]}`로 이어 붙여 보낸다. **로그 글자는 바꾸지 않고 이어 붙이기만 한다**(계약 3.1: 재전송해도 같은 글자).
+  - `Response sync(String... logJsons)`: 로그 객체 글자들을 `{"logs":[...]}`로 이어 붙여 보낸다. 로그가 하나여도 감싼다. **로그 글자는 바꾸지 않고 이어 붙이기만 한다**(계약 3.1: 재전송해도 같은 글자).
+  - `Response syncRaw(String requestJson)`: 요청 본문 전체를 그대로 보낸다(`call("POST", "/me/sync", requestJson)`). `call`을 거치므로 401이면 갱신 후 한 번 재시도하는 흐름이 그대로 적용된다. 이름을 `sync`와 나눈 이유: 둘 다 `sync`이면 문자열 하나를 넘길 때 본문 전체용이 골라져 로그 하나가 감싸지지 않는다(2026-10-16 A가 변경).
   - 응답 편의: 거부 여부는 `rejected`가 `null`인지로 본다(`response.read("$.rejected")`). `appliedThroughSeq`, `rejected.code`, `progress.*`는 기존 `Response`의 JsonPath로 읽는다.
   - 옛 진행 API용 `saveProgress`, `saveProgressBasedOn`, `resetProgress`, `revision`은 W1-7에서 이미 지웠다(아래 참고).
 - `SyncSamples`(새 지원 클래스): `src/test/resources/sync-samples/`의 파일을 읽는 도우미.
@@ -308,6 +309,17 @@ B의 작업은 모두 서버 저장소(`Feed-A-Blackhole-Server`)에서 한다. 
 - 위 시나리오 1~9가 로컬과 CI에서 통과한다(동시 요청은 반복 라운드 포함).
 - `FakeClient`가 `/me/sync`를 보낼 수 있고, 새 `SyncSamples`를 통해 샘플 파일을 원본 그대로 쓴다.
 - `Tests` 워크플로가 `Checkstyle`과 별개로 동작하고 README·CONTRIBUTING이 이를 설명한다.
+
+**결과**(B, `feat/e2e-and-ci`; 리뷰 반영은 A):
+
+- `e2e/SyncClientFlowTests` 15개가 시나리오 1, 1b, 2, 3(요청 안의 누락 포함), 4, 5(제한 시간 허용 오차 포함), 5b, 6, 6b, 7(만료 토큰 갱신, 토큰 없는 요청), 8, 9를 덮는다. 동시 요청(6, 6b)은 라운드마다 새 계정으로 15회 반복하고 실패하면 라운드 번호가 나온다. 전체 테스트 359개와 Checkstyle이 로컬에서 통과했다(2026-10-16).
+- 지원 코드: `FakeClient.sync(String...)`(로그를 `{"logs":[...]}`로 감싼다)와 `syncRaw(String)`(본문 전체), `SyncSamples`(샘플 로그 자르기, 필드 하나만 바꾼 로그, 응답 샘플 비교)와 `SyncSamplesTests` 7개. 로그는 샘플 JSON을 읽어 `logs[i]`를 글자로 되돌린 것이라 같은 로그는 몇 번을 꺼내도 같은 글자다(바이트 단위로 원본과 같은 것은 아니다).
+- CI: `.github/workflows/test.yml`(`name: Tests`, 잡 `Test`)을 추가했고 `code-style.yml`은 고치지 않았다. PR에서 `Checkstyle`과 `Test`가 별개 검사로 보이고 둘 다 통과했다. 일부러 실패하는 테스트를 넣어 잡이 실패하는 것을 확인한 뒤 되돌렸다(`a58ad30`, `875914b`).
+- 문서: `README.md`, `CONTRIBUTING.md`의 CI 설명과 `api-spec.md`의 `FakeClient` 문장을 현재형으로 고쳤다(`api-spec.md`는 v0.8로 올리며 구현 현황, 타임아웃 확정값, `RUN_START` 비교 값과 의심 사유, S8 허용 오차도 반영).
+- **리뷰 반영(A)**:
+  - 시나리오 1과 4가 필드 몇 개만 보던 것을 `sync-response-applied.json`, `sync-response-rejected.json`과 응답 전체 비교로 강화했다(`SyncSamples.comparable`). 실행마다 달라지는 `progress.updatedAt`과 문구인 `rejected.message`만 뺀다.
+  - `sync(String)`과 `sync(String...)`이 같은 이름이라 문자열 하나를 넘기면 로그가 감싸지지 않는 함정이 있어 본문 전체용을 `syncRaw`로 분리했다(위 "① `FakeClient`" 참조).
+- **남은 일**: 병합 차단에 쓰려면 GitHub `main` 보호 규칙에서 **Checkstyle**과 **Test**를 필수 검사로 지정해야 한다(저장소 변경만으로는 되지 않는다, 팀이 설정).
 
 #### W5-2. API 명세 갱신 (S, 1일)
 
