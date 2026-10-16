@@ -121,6 +121,9 @@ class SyncClientFlowTests {
         assertThat(response.number(PROGRESS_GROWTH_STAGE)).isEqualTo(0);
         assertThat(response.<List<Object>>read(PROGRESS_NODES)).isEmpty();
 
+        // 응답 전체가 계약 샘플과 같다(updatedAt은 시각이라 제외). 위의 필드별 확인이 놓치는 추가·누락 필드도 잡는다
+        assertThat(SyncSamples.comparable(response.body())).isEqualTo(SyncSamples.appliedResponse());
+
         // sync_log에는 6건 모두 반영(APPLIED)으로 기록된다
         assertThat(results(client)).containsOnly(SyncLogResult.APPLIED).hasSize(6);
     }
@@ -295,6 +298,9 @@ class SyncClientFlowTests {
         assertThat(rejected.number(PROGRESS_GROWTH_STAGE)).isEqualTo(0);
         assertThat(rejected.<List<Object>>read(PROGRESS_NODES)).isEmpty();
 
+        // 응답 전체가 계약 샘플과 같다(updatedAt은 시각, message는 문장이라 제외)
+        assertThat(SyncSamples.comparable(rejected.body())).isEqualTo(SyncSamples.rejectedResponse());
+
         // seq 1은 반영, seq 2는 거부(SETTLEMENT_GOLD_MISMATCH), seq 3은 처리하지 않았다(NOT_PROCESSED)
         assertThat(results(client)).containsExactly(
                 SyncLogResult.APPLIED, SyncLogResult.REJECTED, SyncLogResult.NOT_PROCESSED
@@ -357,8 +363,7 @@ class SyncClientFlowTests {
         // 샘플의 판 시작 로그에서 timeLimitSeconds 하나만 서버 값(12)과 0.0005초 다르게 바꾼다. 나머지 값은 서버와 모두 같다
         String start = SyncSamples.withPayloadField(SyncSamples.logs(1, 1)[0], TIME_LIMIT_SECONDS, 12.0005);
 
-        // 로그가 하나여도 배열로 넘겨야 {"logs":[...]}로 감싸진다(String 하나를 넘기면 요청 본문 전체로 보내진다)
-        FakeClient.Response response = client.sync(new String[]{start}).expect(200);
+        FakeClient.Response response = client.sync(start).expect(200);
 
         // 거부 없이 반영된다(어차피 의심은 거부 사유가 아니지만, 시나리오 5와 같은 확인을 둔다)
         assertThat(response.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
@@ -384,8 +389,8 @@ class SyncClientFlowTests {
         String start = SyncSamples.logs(1, 1)[0];
         String runId = runIdOf(start);
 
-        // 첫 판 시작(seq 1): 정상 반영되고 판이 열린다. 로그가 하나여도 배열로 넘긴다
-        FakeClient.Response first = client.sync(new String[]{start}).expect(200);
+        // 첫 판 시작(seq 1): 정상 반영되고 판이 열린다
+        FakeClient.Response first = client.sync(start).expect(200);
 
         assertThat(first.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
         assertThat(first.<Object>read(REJECTED)).isNull();
@@ -394,7 +399,7 @@ class SyncClientFlowTests {
 
         // 같은 runId의 판 시작을 seq 2로 다시 보낸다. 첫 판은 아직 결산하지 않았다
         String duplication = SyncSamples.withLogField(start, "seq", 2);
-        FakeClient.Response second = client.sync(new String[]{duplication}).expect(200);
+        FakeClient.Response second = client.sync(duplication).expect(200);
 
         assertThat(second.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
         assertThat(second.number(REJECTED + ".seq")).isEqualTo(2);
@@ -628,7 +633,7 @@ class SyncClientFlowTests {
         FakeClient client = startedClient();
 
         // 새 계정: 반영한 로그가 없어서 appliedThroughSeq와 lastAppliedSeq가 모두 0이고, 진행도는 처음 상태다
-        FakeClient.Response fresh = client.sync(SyncSamples.emptyRequest()).expect(200);
+        FakeClient.Response fresh = client.syncRaw(SyncSamples.emptyRequest()).expect(200);
 
         assertThat(fresh.number(APPLIED_THROUGH_SEQ)).isEqualTo(0);
         assertThat(fresh.<Object>read(REJECTED)).isNull();
@@ -643,7 +648,7 @@ class SyncClientFlowTests {
         client.sync(SyncSamples.logs(1, 3)).expect(200);
 
         // ② 빈 요청을 보낸다 (applied)  → 서버가 "지금 상태"를 응답에 담아 줌 → applied의 값이 ①에서 만든 상태와 같은지 확인
-        FakeClient.Response applied = client.sync(SyncSamples.emptyRequest()).expect(200);
+        FakeClient.Response applied = client.syncRaw(SyncSamples.emptyRequest()).expect(200);
 
         assertThat(applied.number(APPLIED_THROUGH_SEQ)).isEqualTo(3);
         assertThat(applied.<Object>read(REJECTED)).isNull();

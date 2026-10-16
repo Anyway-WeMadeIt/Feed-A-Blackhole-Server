@@ -57,4 +57,29 @@ class SyncSamplesTests {
         assertThat(JsonPath.<Integer>read(changedLog, "$.seq")).isEqualTo(1);
     }
 
+    // 응답 비교는 시각(updatedAt)과 문장(message)만 무시하고, 다른 값이 하나라도 다르면 달라진다
+    @Test
+    void comparingResponsesIgnoresOnlyTheTimestampAndTheMessage() {
+        String sample = """
+                {"appliedThroughSeq":1,"rejected":{"seq":2,"type":"SETTLEMENT","code":"X","message":"가"},
+                 "contentVersion":"v","progress":{"lastAppliedSeq":1,"gold":0,"growthStage":0,"nodes":[],
+                 "updatedAt":"2026-01-01T00:00:00Z"}}""";
+        String sameButOtherTimeAndMessage = sample.replace("2026-01-01", "2030-12-31").replace("\"가\"", "\"나\"");
+        String otherGold = sample.replace("\"gold\":0", "\"gold\":1");
+        String extraField = sample.replace("\"gold\":0,", "\"gold\":0,\"extra\":true,");
+        String otherCode = sample.replace("\"code\":\"X\"", "\"code\":\"Y\"");
+
+        assertThat(SyncSamples.comparable(sameButOtherTimeAndMessage)).isEqualTo(SyncSamples.comparable(sample));
+        assertThat(SyncSamples.comparable(otherGold)).isNotEqualTo(SyncSamples.comparable(sample));
+        assertThat(SyncSamples.comparable(extraField)).isNotEqualTo(SyncSamples.comparable(sample));
+        assertThat(SyncSamples.comparable(otherCode)).isNotEqualTo(SyncSamples.comparable(sample));
+    }
+
+    // 거부가 없는 응답(rejected가 null)도 비교용으로 바꿀 수 있다
+    @Test
+    void aResponseWithoutRejectionCanBeCompared() {
+        assertThat(SyncSamples.appliedResponse()).isEqualTo(SyncSamples.appliedResponse());
+        assertThat(SyncSamples.appliedResponse()).isNotEqualTo(SyncSamples.rejectedResponse());
+    }
+
 }

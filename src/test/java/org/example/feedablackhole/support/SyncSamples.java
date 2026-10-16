@@ -30,6 +30,12 @@ public final class SyncSamples {
     // 로그가 없는 요청(진행도만 받는다)
     private static final String EMPTY = "/sync-samples/sync-request-empty.json";
 
+    // 샘플 요청(seq 1~6)을 모두 반영했을 때의 응답
+    private static final String RESPONSE_APPLIED = "/sync-samples/sync-response-applied.json";
+
+    // 변조된 샘플 요청에 대한 응답(seq 1까지 반영, seq 2 거부)
+    private static final String RESPONSE_REJECTED = "/sync-samples/sync-response-rejected.json";
+
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private SyncSamples() {
@@ -58,10 +64,39 @@ public final class SyncSamples {
     }
 
     /**
-     * 로그가 없는 요청의 본문 전체({"logs":[]}). 요청 본문 전체를 받는 FakeClient.sync(String)에 그대로 넘긴다.
+     * 로그가 없는 요청의 본문 전체({"logs":[]}). 요청 본문 전체를 받는 FakeClient.syncRaw(String)에 그대로 넘긴다.
      */
     public static String emptyRequest() {
         return read(EMPTY).toString();
+    }
+
+    /**
+     * 샘플 요청 전체를 반영했을 때 기대하는 응답(sync-response-applied.json). 비교용이라 {@link #comparable}을 거친 값이다.
+     */
+    public static Object appliedResponse() {
+        return comparable(read(RESPONSE_APPLIED).toString());
+    }
+
+    /**
+     * 변조된 샘플 요청에 기대하는 응답(sync-response-rejected.json). 비교용이라 {@link #comparable}을 거친 값이다.
+     */
+    public static Object rejectedResponse() {
+        return comparable(read(RESPONSE_REJECTED).toString());
+    }
+
+    /**
+     * 응답 본문을 샘플과 통째로 비교할 수 있는 값으로 바꾼다. 실행할 때마다 달라지는 progress.updatedAt(시각)과
+     * 사람이 읽는 문장인 rejected.message는 뺀다. 나머지 필드는 하나라도 다르거나 더 있으면 비교가 실패한다.
+     */
+    public static Object comparable(String responseJson) {
+        ObjectNode response = (ObjectNode) JSON.readTree(responseJson);
+        ((ObjectNode) response.get("progress")).remove("updatedAt");
+        JsonNode rejected = response.get("rejected");
+        if (rejected != null && rejected.isObject()) {
+            ((ObjectNode) rejected).remove("message");
+        }
+
+        return JSON.convertValue(response, Object.class);
     }
 
     /**
