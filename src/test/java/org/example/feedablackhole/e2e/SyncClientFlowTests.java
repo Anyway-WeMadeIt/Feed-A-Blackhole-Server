@@ -41,12 +41,27 @@ class SyncClientFlowTests {
     @Autowired
     private SyncLogRecordRepository logRepository;
 
+    // ---------- 응답의 JSON 경로(동기화 응답: appliedThroughSeq, rejected, progress) ----------
+
+    // 서버가 이 요청을 처리한 뒤 반영한 마지막 로그 번호(응답 최상위). 정상이면 보낸 마지막 seq, 거부되면 거부 앞까지다
     private static final String APPLIED_THROUGH_SEQ = "$.appliedThroughSeq";
+
+    // 거부된 로그(seq, type, code, message). 거부가 없으면 null이다
     private static final String REJECTED = "$.rejected";
+
+    // 진행도 안의 마지막으로 반영한 로그 번호(서버 DB의 값). 다음 로그는 이 값 + 1이어야 한다
     private static final String PROGRESS_LAST_APPLIED_SEQ = "$.progress.lastAppliedSeq";
+
+    // 진행도의 Gold
     private static final String PROGRESS_GOLD = "$.progress.gold";
+
+    // 진행도의 산 노드 개수(JsonPath의 length() 함수)
     private static final String PROGRESS_NODES_LENGTH = "$.progress.nodes.length()";
+
+    // 진행도의 블랙홀 성장도(결산에서 이정표에 닿으면 오른다)
     private static final String PROGRESS_GROWTH_STAGE = "$.progress.growthStage";
+
+    // 진행도의 산 노드 목록(처음 산 순서, 각 항목은 nodeId와 rank)
     private static final String PROGRESS_NODES = "$.progress.nodes";
 
     // ---------- 시나리오 ----------
@@ -143,6 +158,61 @@ class SyncClientFlowTests {
                 SyncLogResult.SKIPPED, SyncLogResult.SKIPPED,
                 SyncLogResult.APPLIED, SyncLogResult.APPLIED
         );
+    }
+
+    /**
+     * 시나리오 3(누락): 서버가 마지막으로 반영한 번호(lastAppliedSeq)가 0인 새 계정에 seq 3부터 보내면
+     * 앞 로그(1, 2)가 빠졌으므로 SEQ_GAP으로 거부하고, 뒤의 로그는 처리하지 않는다(NOT_PROCESSED).
+     * 이어서 빠진 로그부터(seq 1~6) 다시 보내면 정상 반영된다.
+     */
+    @Test
+    void missingEarlierLogsAreRejectedAsSeqGapAndTheResendIsApplied() {
+        FakeClient client = startedClient();
+
+        // seq 3~6: 서버가 기다리는 번호는 1인데 3이 왔다
+        FakeClient.Response gap = client.sync(SyncSamples.logs(3, 6)).expect(200);
+
+        assertThat(gap.number(APPLIED_THROUGH_SEQ)).isEqualTo(0);
+        assertThat(gap.number(REJECTED + ".seq")).isEqualTo(3);
+        assertThat(gap.text(REJECTED + ".code")).isEqualTo("SEQ_GAP");
+        assertThat(gap.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(0);
+
+        // 빠진 로그부터 다시 보낸다(seq 1~6). 거부된 번호(3~6)가 다시 와도 이번에는 정상 처리된다
+        FakeClient.Response resent = client.sync(SyncSamples.logs(1, 6)).expect(200);
+
+        assertThat(resent.number(APPLIED_THROUGH_SEQ)).isEqualTo(6);
+        assertThat(resent.<Object>read(REJECTED)).isNull();
+        assertThat(resent.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(6);
+        assertThat(resent.number(PROGRESS_GOLD)).isEqualTo(0);
+        assertThat(resent.<List<Object>>read(PROGRESS_NODES)).isEmpty();
+
+        // 처음 요청: seq 3은 거부(SEQ_GAP), 뒤의 seq 4, 5, 6은 처리하지 않았다(NOT_PROCESSED).
+        // 재전송: seq 1~6이 모두 정상 반영(APPLIED)으로 이어서 기록된다
+        assertThat(results(client)).containsExactly(
+                SyncLogResult.REJECTED, SyncLogResult.NOT_PROCESSED,
+                SyncLogResult.NOT_PROCESSED, SyncLogResult.NOT_PROCESSED,
+                SyncLogResult.APPLIED, SyncLogResult.APPLIED, SyncLogResult.APPLIED,
+                SyncLogResult.APPLIED, SyncLogResult.APPLIED, SyncLogResult.APPLIED);
+    }
+
+    /**
+     * 시나리오 3(요청 안의 누락): 한 요청 안에서 seq가 1씩 증가하지 않으면(1, 3) 거부가 아니라 400 INVALID_REQUEST이고,
+     * 아무것도 반영하지 않는다(계약 3.4). 서버의 진행도도 그대로다.
+     */
+    @Test
+    void aGapInsideOneRequestIsABadRequestAndNothingIsApplied() {
+        FakeClient client = startedClient();
+
+        FakeClient.Response response = client.sync(SyncSamples.logs(1, 1)[0], SyncSamples.logs(3, 3)[0]);
+
+        assertThat(response.status()).isEqualTo(400);
+        assertThat(response.errorCode()).isEqualTo("INVALID_REQUEST");
+
+        // 첫 로그(seq 1)도 반영되지 않았다
+        FakeClient.Response progress = client.loadProgress().expect(200);
+
+        assertThat(progress.number("$.lastAppliedSeq")).isEqualTo(0);
+        assertThat(results(client)).isEmpty();
     }
 
     // ---------- 도우미 ----------
