@@ -94,6 +94,7 @@ electricAsteroid.critChance-02,1,행성계
 comet.rainChance-01,1,행성계
 electricAsteroid.damage-03,1,행성계
 electricAsteroid.critBonus-02,1,행성계
+growth.asteroids-04,1,행성계
 planet.massScale-03,1,행성계
 planet.massScale-04,1,행성계
 moonPlanet.speedScale-02,1,행성계
@@ -105,7 +106,7 @@ moonPlanet.spawnChance-02,1,행성계
 moonPlanet.duration-02,1,행성계
 breaker.damage-16,1,행성계
 breaker.damage-17,1,행성계
-breaker.damage-18,1,행성계
+breaker.damage-18,1,혜성 궤도
 breaker.planetBonusDamage-03,1,행성계
 breaker.planetBonusDamage-04,1,행성계
 asteroid.toPlanet-03,1,행성계
@@ -113,25 +114,19 @@ goldenAsteroid.critRewardScale-04,1,행성계
 goldenAsteroid.rewardScale-04,1,행성계
 moonPlanet.duration-03,1,행성계
 goldenAsteroid.rewardScale-05,1,행성계
-planet.massScale-05,1,행성계
+planet.massScale-05,1,혜성 궤도
 planet.massScale-06,1,행성계
-breaker.damage-19,1,행성계
 growth.planets-02,1,혜성 궤도
 breaker.radius-07,1,혜성 궤도
 planet.respawnChance-03,1,혜성 궤도
 moonPlanet.rangeScale-03,1,혜성 궤도
-comet.rainChance-02,1,혜성 궤도
 planet.massScale-07,1,혜성 궤도
 breaker.damage-20,1,혜성 궤도
 breaker.radius-08,1,혜성 궤도
 breaker.critChance-04,1,혜성 궤도
-moonPlanet.rangeScale-04,1,혜성 궤도
 breaker.radius-09,1,혜성 궤도
-breaker.critChance-05,1,혜성 궤도
 comet.rainChance-03,1,혜성 궤도
 asteroid.count-04,1,혜성 궤도
-asteroid.count-05,1,혜성 궤도
-planet.massScale-08,1,혜성 궤도
 breaker.speed-08,1,항성 요람
 electricStar.damage-01,1,항성 요람
 breaker.radius-10,1,항성 요람
@@ -165,7 +160,7 @@ breaker.radius-11,1,펄서 · 초신성
 asteroid.respawnChance-04,1,펄서 · 초신성
 timer-02,1,펄서 · 초신성
 planet.toStar-02,1,펄서 · 초신성
-star.respawnChance-03,1,펄서 · 초신성
+star.respawnChance-03,1,항성 요람
 breaker.starBonusDamage-02,1,펄서 · 초신성
 planet.respawnChance-04,1,펄서 · 초신성
 star.massScale-04,1,펄서 · 초신성
@@ -179,29 +174,24 @@ laserStar.damage-01,1,펄서 · 초신성
 breaker.damage-25,1,펄서 · 초신성
 laserStar.critBonus-01,1,펄서 · 초신성
 breaker.speed-10,1,펄서 · 초신성
-moonPlanet.duration-04,1,펄서 · 초신성
 electricStar.splitChance-02,1,펄서 · 초신성
-supernovaStar.range-01,1,펄서 · 초신성
-breaker.critBonus-02,1,펄서 · 초신성
+supernovaStar.range-01,1,초신성 잔해
 moonPlanet.maxCount-01,1,펄서 · 초신성
 electricStar.chain-03,1,펄서 · 초신성
 breaker.damage-26,1,펄서 · 초신성
 breaker.radius-12,1,펄서 · 초신성
 asteroid.respawnChance-05,1,펄서 · 초신성
 laserStar.width-02,1,펄서 · 초신성
-supernovaStar.hpDamage-01,1,펄서 · 초신성
+supernovaStar.damage-01,1,초신성 잔해
 star.respawnChance-04,1,펄서 · 초신성
 laserStar.damage-02,1,펄서 · 초신성
 supernovaStar.spawnChance-01,1,펄서 · 초신성
 star.massScale-05,1,펄서 · 초신성
 laserStar.critBonus-02,1,펄서 · 초신성
-breaker.speed-11,1,펄서 · 초신성
-electricStar.splitChance-03,1,펄서 · 초신성
-supernovaStar.range-02,1,펄서 · 초신성
-breaker.critBonus-03,1,펄서 · 초신성
-comet.spawnChance-03,1,펄서 · 초신성
-supernovaStar.hpDamage-02,1,펄서 · 초신성
-breaker.damage-27,1,펄서 · 초신성
+supernovaStar.range-02,1,초신성 잔해
+comet.spawnChance-03,1,초신성 잔해
+supernovaStar.damage-02,1,초신성 잔해
+breaker.damage-27,1,초신성 잔해
 laserStar.width-03,1,펄서 · 초신성
 laserStar.damage-03,1,펄서 · 초신성
 laserStar.damage-04,1,펄서 · 초신성
@@ -210,15 +200,13 @@ laserStar.damage-05,1,펄서 · 초신성
 laserStar.width-05,1,펄서 · 초신성
 breaker.radius-13,1,펄서 · 초신성
 laserStar.width-06,1,펄서 · 초신성
-star.massScale-06,1,펄서 · 초신성
-supernovaStar.hpDamage-03,1,초신성 잔해
+supernovaStar.damage-03,1,초신성 잔해
 timer-03,1,초신성 잔해
 planet.toStar-03,1,초신성 잔해
 comet.spawnChance-04,1,초신성 잔해
 breaker.critBonus-04,1,초신성 잔해
 planet.timeChance-02,1,초신성 잔해
 star.timeChance-02,1,초신성 잔해
-star.massScale-07,1,초신성 잔해
 laserStar.width-07,1,초신성 잔해
 laserStar.damage-06,1,초신성 잔해
 planet.toStar-04,1,초신성 잔해
@@ -230,21 +218,20 @@ supernovaStar.range-03,1,초신성 잔해
 breaker.damage-28,1,초신성 잔해
 laserStar.width-08,1,초신성 잔해
 supernovaStar.range-04,1,초신성 잔해
-supernovaStar.hpDamage-04,1,초신성 잔해
+supernovaStar.damage-04,1,초신성 잔해
 planet.toStar-05,1,초신성 잔해
-supernovaStar.hpDamage-05,1,초신성 잔해
-supernovaStar.hpDamage-06,1,초신성 잔해
+supernovaStar.damage-05,1,초신성 잔해
+supernovaStar.damage-06,1,초신성 잔해
 timer-04,1,초신성 잔해
 laserStar.width-09,1,초신성 잔해
-star.massScale-08,1,초신성 잔해
 star.massScale-09,1,초신성 잔해
 star.toGalaxy-01,1,은하핵
 growth.galaxies-01,1,은하핵
 breaker.galaxyBonusDamage-01,1,은하핵
 gravityGalaxy.spawnChance-01,1,은하핵
-galaxy.size-01,1,은하핵
+galaxy.size-01,1,초신성 잔해
 galaxy.timeChance-01,1,은하핵
-galaxy.massScale-01,1,은하핵
+galaxy.massScale-01,1,초신성 잔해
 gravityGalaxy.radius-01,1,은하핵
 gravityGalaxy.force-01,1,은하핵
 gravityGalaxy.duration-01,1,은하핵
