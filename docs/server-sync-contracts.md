@@ -569,7 +569,8 @@ namespace BlackHole.Net
 - **로그인과 시작 동기화가 끝날 때까지 시작 버튼을 막는다.** 시작 동기화가 끝나야 진행도가 확정되기 때문이다. 동기화(3장)가 구현되기 전까지는 로그인이 끝나면(`Online` 또는 `Offline`) 푼다.
 - 시작 버튼을 막는 최대 시간은 `loginBudgetSeconds + syncTimeoutSeconds`(기본 18초)다. 서버에 닿지 않을 때는 대부분 연결 오류가 곧바로 와서 훨씬 짧다.
 
-- **W2-3 구현 범위(2026-10-14, A)**: 별도 타이틀 변경은 이번 범위가 아니다(클라이언트 폴리싱 담당). `GameBootstrap`이 콘텐츠·진행 저장을 읽은 뒤 **타이틀로 가기 전에** `IAuthSession.StartAsync()`를 기다린다(최대 `loginBudgetSeconds`, 대기 중 화면 표시 없음). 그래서 위 상태 텍스트 표시와 시작 버튼 막기는 구현하지 않았고, 결과는 `[인증]` 로그로만 남긴다. 시작 동기화(W3-4)가 생기면 같은 지점에서 로그인 뒤 동기화까지 기다린다.
+- **W2-3 구현 범위(2026-10-14, A)**: 별도 타이틀 변경은 이번 범위가 아니다(클라이언트 폴리싱 담당). `GameBootstrap`이 콘텐츠·진행 저장을 읽은 뒤 **타이틀로 가기 전에** `IAuthSession.StartAsync()`를 기다린다(최대 `loginBudgetSeconds`, 대기 중 화면 표시 없음). 그래서 위 상태 텍스트 표시와 시작 버튼 막기는 구현하지 않았고, 결과는 `[인증]` 로그로만 남긴다.
+- **W3-4 반영(2026-10-16)**: 같은 지점에서 로그인 뒤 시작 동기화(`SyncSender.SyncOnStartupAsync()`)까지 기다린 다음 타이틀로 간다(최대 `loginBudgetSeconds + syncTimeoutSeconds`). 서버를 쓰지 않는 실행(`Offline(Disabled)`)은 전송기를 만들지 않는다.
 
 ### 2.9 결정 사항 (2장, 확정)
 
@@ -1009,11 +1010,12 @@ public enum SuspicionReason {
 
 | 어셈블리 | Unity 의존 | 내용 | 담당 |
 |---|---|---|---|
-| `BlackHole.Net` (2장) | 없음 | 동기화 DTO(5.4), `SyncJson`(5.5), `ISyncApi`, `ISyncStore`, `PendingLog` 등(5.6) | A(타입), C(`ISyncApi` 구현) |
+| `BlackHole.Net` (2장) | 없음 | 동기화 DTO(5.4), `SyncJson`(5.5), `ISyncApi`, `ISyncStore`, `PendingLog` 등(5.6). `SyncApi`(`ISyncApi` 구현), `SyncSender`(5.8) | A(타입), C(`SyncApi`, `SyncSender`) |
 | `BlackHole.Sync` (신규) | 없음 | `SyncLogFactory`: 코어 객체(진행도, 판, 결산 결과)로 로그 JSON을 만든다. `SyncLedger`: 로그 장부와 응답 반영 규칙(5.7). `ServerProgress`: 서버 진행도 비교·변환. `BlackHole.Core.*`와 `BlackHole.Net`을 참조 | A |
 | `BlackHole.Save` (신규) | 있음 | `ProgressStore`(`ISyncStore` 구현, 진행 저장과 함께), `ProgressSaveFile`. 원래 Assembly-CSharp에 있던 `Save/`를 분리했다 | A |
-| Assembly-CSharp | 있음 | `SyncSender`, 연결 코드, 알림 UI | C |
+| Assembly-CSharp | 있음 | 연결 코드(`GameBootstrap`), 알림 UI | C |
 
+- `SyncSender`는 처음에 Assembly-CSharp에 두기로 했으나, Unity에 의존하지 않고 Editor 테스트가 가짜 `ISyncApi`로 전송 규칙을 직접 검증하도록 `BlackHole.Net`에 두었다(W3-4).
 - `SyncLogFactory`를 Unity 밖에 두는 이유: Editor 테스트 어셈블리가 직접 참조해 검증하고(샘플과 글자 단위 비교), 에디터 도구(W4-2a)가 캠페인 전체 로그를 만들 때 같은 코드를 쓰기 위해서다. 에디터 도구의 `IJsonSerializer`는 `UnityJsonSerializer`다. (원래는 net8.0 시뮬레이션 도구도 쓰도록 이렇게 나눴으나, 그 도구는 2026-10-14 `dev`에서 삭제되었다.)
 
 ### 5.3 코어에 더할 것
@@ -1154,7 +1156,7 @@ public enum SyncCallOutcome
 {
     Response,        // 200, 응답 본문을 읽었다
     Unreachable,     // 네트워크 오류, 타임아웃, 5xx → 이번 실행은 오프라인(Unreachable)
-    Unauthorized,    // 갱신 후에도 401 → 오프라인(IAuthSession이 이미 바꿈)
+    Unauthorized,    // 401 → 갱신 실패(IAuthSession이 이미 오프라인) 또는 갱신 후에도 401(오프라인 ProtocolError)
     ProtocolError,   // 400, 413, 형식이 맞지 않는 200 → 오프라인(ProtocolError), 오류 로그
 }
 ```
@@ -1183,6 +1185,13 @@ public enum SyncCallOutcome
 - **나눠 보내기**(3.5): 한 요청에 최대 500개, 본문 1 MB(`SyncJson.Utf8Length`) 이하. 앞 요청의 응답을 반영한 뒤 다음 요청을 보낸다. 거부가 나오면 멈춘다(남은 로그는 `ApplyResponse`가 이미 지웠다).
 - **실패**: `Unreachable`, `Unauthorized`, `ProtocolError`면 로그를 그대로 두고 이번 실행은 더 보내지 않는다(계획서 D9). 오프라인 사유는 `IAuthSession.GoOffline`으로 알린다.
 - **`CONTENT_VERSION_MISMATCH`**: 지금은 다른 거부와 똑같이 처리한다(3.6, `ContentOutdated` 전환은 추후).
+- **구현 메모(W3-4, 2026-10-16)**:
+  - `GoOffline`은 `SyncSender`만 부른다. `SyncApi`는 결과(`SyncCallOutcome`)만 돌려주고 실패 원인(상태 코드, 오류 코드)을 로그로 남긴다.
+  - 오프라인 사유: `Unreachable` → `Unreachable`, 그 밖(`Unauthorized`, `ProtocolError`) → `ProtocolError`. 갱신에 실패한 `Unauthorized`는 `IAuthSession`이 이미 오프라인이고 처음 사유를 유지하므로 실제로 바뀌는 것은 "갱신한 뒤에도 401"인 경우뿐이다. `OfflineReason`에 값을 더하지 않는다(2.4).
+  - 동기화 요청 타임아웃과 시작 대기 시간은 모두 `ServerSettings.SyncTimeoutSeconds`(10초, C11)다.
+  - 응답의 `appliedThroughSeq`가 보낸 마지막 seq보다 커도 실패로 보지 않는다(로컬 장부가 서버보다 뒤처진 경우, 5.7의 다음 seq 규칙이 맞춘다). 거부 없이 반영했는데 보낸 첫 로그가 그대로 남으면 같은 요청을 되풀이하지 않도록 `ProtocolError`로 멈춘다.
+  - 로그 하나가 1 MB를 넘으면 보낼 수 없으므로 `ProtocolError`다(결산 로그는 칸 2000개 상한에서도 1 MB에 크게 못 미친다).
+  - 거부를 반영하면 `RejectionReceived` 이벤트를 올린다(W3-5가 구독할 수 있다). 거부 기록 자체는 `ISyncStore.LastRejection`에 있다.
 
 ### 5.9 거부 알림 (W3-5)
 
@@ -1243,7 +1252,8 @@ public enum SyncCallOutcome
 |---|---|---|
 | 동기화 DTO(5.4), `LogTypes`·`RejectCodes`·`SyncLimits` | `Assets/Scripts/Net/SyncDtos.cs`, `SyncCodes.cs` | 완료 |
 | `SyncJson`(5.5) | `Assets/Scripts/Net/SyncJson.cs` | **구현 완료** |
-| `PendingLog`, `ISyncStore`, `SyncApplyOutcome`, `ISyncApi`, `SyncCallResult`(5.6) | `Assets/Scripts/Net/` | 완료(구현 없음) |
+| `PendingLog`, `ISyncStore`, `SyncApplyOutcome`, `ISyncApi`, `SyncCallResult`(5.6) | `Assets/Scripts/Net/` | 완료 |
+| `SyncApi`(`ISyncApi` 구현), `SyncSender`(5.8), `GameBootstrap` 연결 | `Assets/Scripts/Net/SyncApi.cs`, `SyncSender.cs`, `Battle/GameBootstrap.cs` | **완료**(W3-4, 클라이언트 `feat/asyncServer`) |
 | `KillBucket`, `KillBucketCount`(5.3) | `Assets/Scripts/Core/Enemies/KillBucket.cs` | 타입 완료. 세는 일과 `BattleRawData` 속성은 W3-1(**완료**, PR #88. 검증은 `Editor/SyncFixtures/KillLedgerCheck`) |
 | `RunStartInfo`(5.3) | `Assets/Scripts/Core/Battle/Session/RunStartInfo.cs` | **완료**. `GameSession.StartInfo`를 연결했다(W3-2) |
 | `BlackHole.Sync` 어셈블리, `SyncLogFactory` | `Assets/Scripts/Sync/` | **완료**. 4종 로그(구매, 새 게임, 판 시작, 결산)를 만들고 `ScreenFlow`의 4지점에서 남긴다(W3-2). 결산의 칸별 값은 W3-1이 채운다(완료) |
@@ -1253,5 +1263,7 @@ public enum SyncCallOutcome
 | 테스트 | `Assets/Tests/Net/SyncJsonTests.cs`(9개) | 통과. 구매·새 게임 로그가 샘플과 글자까지 같고, 응답 샘플을 DTO로 읽는다 |
 | 테스트 | `Assets/Tests/Net/SyncLogFactoryTests.cs`(5개) | 작성. 판 시작·결산 로그가 샘플과 같고, 공급·칸별 값이 순서대로 실린다 |
 | 테스트 | `Assets/Tests/Save/SyncLedgerTests.cs`(12개), `ProgressStoreTests.cs`(19개) | 작성. 5.7 규칙, 포맷 1 로드, 쓰기 실패, 깨진 `Sync`, 거부·덮어쓰기, 타이틀 응답 |
+| 테스트 | `Assets/Tests/Net/SyncSenderTests.cs`(27개), `SyncApiTests.cs`(17개), `SyncSenderStoreTests.cs`(3개) | 통과(W3-4). 가짜 `ISyncApi`·실제 장부로 5.8 규칙 전체, 가짜 전송으로 요청 모양·401 재시도·응답별 결과, 실제 `ProgressStore`와 저장·다음 실행 연결 |
+| 테스트 | `Assets/Tests/Net/SyncLocalServerTests.cs`(1개, Explicit) | 로컬 서버로 통과(W3-4, M1 시나리오) |
 
 - 응답의 산 노드 DTO 이름은 `ProgressNodeDto`다(통계 전송의 `BlackHole.Analytics.NodeRankDto`와 겹치지 않게).
