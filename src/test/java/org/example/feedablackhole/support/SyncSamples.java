@@ -24,6 +24,9 @@ public final class SyncSamples {
     // 클래스패스 기준 샘플 요청의 위치(src/test/resources 아래)
     private static final String REQUEST = "/sync-samples/sync-request.json";
 
+    // seq 2 결산의 Gold를 99999로 부풀린 요청(seq 1~3). 결산 검증이 거부하는지 볼 때 쓴다
+    private static final String TAMPERED = "/sync-samples/sync-request-tampered.json";
+
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private SyncSamples() {
@@ -41,15 +44,14 @@ public final class SyncSamples {
      * 배열로 돌려주므로 FakeClient.sync(String...)에 그대로 넘기면 항상 {"logs":[...]}로 감싸진다.
      */
     public static String[] logs(int fromSeq, int toSeq) {
-        List<String> selected = new ArrayList<>();
-        for (JsonNode log : read().get("logs")) {
-            int seq = log.get("seq").intValue();
-            if (seq >= fromSeq && seq <= toSeq) {
-                selected.add(log.toString());
-            }
-        }
+        return logsOf(REQUEST, fromSeq, toSeq);
+    }
 
-        return selected.toArray(new String[0]);
+    /**
+     * 변조된 샘플 요청(seq 1~3)의 로그. seq 2 결산의 earnedGold와 settledGold가 20 대신 99999다.
+     */
+    public static String[] tamperedLogs() {
+        return logsOf(TAMPERED, 1, Integer.MAX_VALUE);
     }
 
     /**
@@ -72,15 +74,31 @@ public final class SyncSamples {
         return log.toString();
     }
 
-    // 샘플 요청 파일을 읽어 JSON 트리로 만든다
-    private static JsonNode read() {
-        try (InputStream in = SyncSamples.class.getResourceAsStream(REQUEST)) {
+    // 아래는 private 도우미
+
+    // 샘플 파일을 읽어 JSON 트리로 만든다
+    private static JsonNode read(String path) {
+        try (InputStream in = SyncSamples.class.getResourceAsStream(path)) {
             if (in == null) {
-                throw new IllegalStateException("샘플이 없다: " + REQUEST);
+                throw new IllegalStateException("샘플이 없다: " + path);
             }
             return JSON.readTree(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
+
+    // 샘플 파일에서 seq가 fromSeq ~ toSeq인 로그를 seq 순서대로 글자로 꺼낸다
+    private static String[] logsOf(String path, int fromSeq, int toSeq) {
+        List<String> selected = new ArrayList<>();
+        for (JsonNode log : read(path).get("logs")) {
+            int seq = log.get("seq").intValue();
+            if (seq >= fromSeq && seq <= toSeq) {
+                selected.add(log.toString());
+            }
+        }
+
+        return selected.toArray(new String[0]);
+    }
+
 }

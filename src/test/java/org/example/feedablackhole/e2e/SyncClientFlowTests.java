@@ -109,6 +109,9 @@ class SyncClientFlowTests {
         assertThat(first.text("$.progress.nodes[0].nodeId")).isEqualTo("timer-01");
         assertThat(first.number("$.progress.nodes[0].rank")).isEqualTo(1);
 
+        // 첫 요청 직후의 기록: seq 1~3이 반영된다
+        assertThat(results(client)).containsOnly(SyncLogResult.APPLIED).hasSize(3);
+
         // 두 번째 요청(seq 4~6): 판 시작, 결산, 새 게임. 한 번에 보낸 것(시나리오 1)과 같은 결과다
         FakeClient.Response second = client.sync(SyncSamples.logs(4, 6)).expect(200);
 
@@ -119,7 +122,7 @@ class SyncClientFlowTests {
         assertThat(second.number(PROGRESS_GROWTH_STAGE)).isEqualTo(0);
         assertThat(second.<List<Object>>read(PROGRESS_NODES)).isEmpty();
 
-        // 두 요청에 걸쳐 sync_log 6건 모두 반영으로 기록된다
+        // 두 번째 요청 직후의 기록: 앞의 3건에 이어 seq 4~6도 모두 반영으로 기록되어 6건이다
         assertThat(results(client)).containsOnly(SyncLogResult.APPLIED).hasSize(6);
     }
 
@@ -130,7 +133,14 @@ class SyncClientFlowTests {
     @Test
     void resendingAppliedLogsDoesNotApplyThemTwice() {
         FakeClient client = startedClient();
-        client.sync(SyncSamples.logs(1, 3)).expect(200);
+        FakeClient.Response first = client.sync(SyncSamples.logs(1, 3)).expect(200);
+
+        assertThat(first.number(APPLIED_THROUGH_SEQ)).isEqualTo(3);
+        assertThat(first.number(PROGRESS_GOLD)).isEqualTo(18);
+        assertThat(first.number(PROGRESS_NODES_LENGTH)).isEqualTo(1);
+
+        // 첫 요청 직후: seq 1~3 반영
+        assertThat(results(client)).containsOnly(SyncLogResult.APPLIED).hasSize(3);
 
         // 같은 로그를 그대로 다시 보낸다(네트워크가 끊겨 응답을 못 받은 클라이언트가 다시 보내는 경우) -> 재전송
         FakeClient.Response resent = client.sync(SyncSamples.logs(1, 3)).expect(200);
@@ -141,6 +151,12 @@ class SyncClientFlowTests {
         assertThat(resent.number(PROGRESS_GOLD)).isEqualTo(18);
         assertThat(resent.number(PROGRESS_NODES_LENGTH)).isEqualTo(1);
         assertThat(resent.number("$.progress.nodes[0].rank")).isEqualTo(1);
+
+        // 재전송 직후: 앞의 3건에 이어 이미 반영한 seq 1~3이 건너뜀(SKIPPED)으로 기록된다
+        assertThat(results(client)).containsExactly(
+                SyncLogResult.APPLIED, SyncLogResult.APPLIED, SyncLogResult.APPLIED,
+                SyncLogResult.SKIPPED, SyncLogResult.SKIPPED, SyncLogResult.SKIPPED
+        );
 
         // 일부만 겹치는 요청: 2, 3은 이미 반영했으니 건너뛰고 4, 5만 반영한다
         FakeClient.Response overlapping = client.sync(SyncSamples.logs(2, 5)).expect(200);
@@ -177,6 +193,12 @@ class SyncClientFlowTests {
         assertThat(gap.text(REJECTED + ".code")).isEqualTo("SEQ_GAP");
         assertThat(gap.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(0);
 
+        // 처음 요청 직후의 기록: seq 3은 거부(SEQ_GAP), 뒤의 seq 4, 5, 6은 처리하지 않았다(NOT_PROCESSED)
+        assertThat(results(client)).containsExactly(
+                SyncLogResult.REJECTED, SyncLogResult.NOT_PROCESSED,
+                SyncLogResult.NOT_PROCESSED, SyncLogResult.NOT_PROCESSED
+        );
+
         // 빠진 로그부터 다시 보낸다(seq 1~6). 거부된 번호(3~6)가 다시 와도 이번에는 정상 처리된다
         FakeClient.Response resent = client.sync(SyncSamples.logs(1, 6)).expect(200);
 
@@ -192,7 +214,8 @@ class SyncClientFlowTests {
                 SyncLogResult.REJECTED, SyncLogResult.NOT_PROCESSED,
                 SyncLogResult.NOT_PROCESSED, SyncLogResult.NOT_PROCESSED,
                 SyncLogResult.APPLIED, SyncLogResult.APPLIED, SyncLogResult.APPLIED,
-                SyncLogResult.APPLIED, SyncLogResult.APPLIED, SyncLogResult.APPLIED);
+                SyncLogResult.APPLIED, SyncLogResult.APPLIED, SyncLogResult.APPLIED
+        );
     }
 
     /**
@@ -213,6 +236,49 @@ class SyncClientFlowTests {
 
         assertThat(progress.number("$.lastAppliedSeq")).isEqualTo(0);
         assertThat(results(client)).isEmpty();
+    }
+
+    /**
+     * 시나리오 4(N번째 거부): 한 요청의 중간 로그가 검증에 실패하면 거기서 멈춘다. 계약 샘플 sync-request-tampered.json은
+     * seq 2 결산의 Gold를 20 대신 99999로 부풀린 것이라, 앞의 seq 1(판 시작)만 반영되고 seq 2는 SETTLEMENT_GOLD_MISMATCH로 거부되며
+     * seq 3(구매)은 처리하지 않는다. 거부된 번호는 반영된 적이 없으므로, 고친 seq 2부터 다시 보내면 반영된다.
+     */
+    @Test
+    void aTamperedSettlementIsRejectedAndTheRestIsNotProcessed() {
+        FakeClient client = startedClient();
+
+        FakeClient.Response rejected = client.sync(SyncSamples.tamperedLogs()).expect(200);
+
+        assertThat(rejected.number(APPLIED_THROUGH_SEQ)).isEqualTo(1);
+        assertThat(rejected.number(REJECTED + ".seq")).isEqualTo(2);
+        assertThat(rejected.text(REJECTED + ".type")).isEqualTo("SETTLEMENT");
+        assertThat(rejected.text(REJECTED + ".code")).isEqualTo("SETTLEMENT_GOLD_MISMATCH");
+
+        // 진행도(계약 3.8의 sync-response-rejected.json): seq 1까지만 반영되었고 Gold와 노드는 그대로다
+        assertThat(rejected.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(1);
+        assertThat(rejected.number(PROGRESS_GOLD)).isEqualTo(0);
+        assertThat(rejected.number(PROGRESS_GROWTH_STAGE)).isEqualTo(0);
+        assertThat(rejected.<List<Object>>read(PROGRESS_NODES)).isEmpty();
+
+        // seq 1은 반영, seq 2는 거부(SETTLEMENT_GOLD_MISMATCH), seq 3은 처리하지 않았다(NOT_PROCESSED)
+        assertThat(results(client)).containsExactly(
+                SyncLogResult.APPLIED, SyncLogResult.REJECTED, SyncLogResult.NOT_PROCESSED
+        );
+
+        // 고친(원본) seq 2부터 다시 보낸다. 거부된 번호를 다시 써도 이번에는 정상 반영된다
+        FakeClient.Response resent = client.sync(SyncSamples.logs(2, 3)).expect(200);
+
+        assertThat(resent.number(APPLIED_THROUGH_SEQ)).isEqualTo(3);
+        assertThat(resent.<Object>read(REJECTED)).isNull();
+        assertThat(resent.number(PROGRESS_LAST_APPLIED_SEQ)).isEqualTo(3);
+        assertThat(resent.number(PROGRESS_GOLD)).isEqualTo(18);
+        assertThat(resent.number(PROGRESS_NODES_LENGTH)).isEqualTo(1);
+
+        // 처음 요청의 기록(seq 1 반영, 2 거부, 3 처리 안 함)에 이어, 고쳐서 다시 보낸 seq 2, 3이 반영으로 기록된다
+        assertThat(results(client)).containsExactly(
+                SyncLogResult.APPLIED, SyncLogResult.REJECTED, SyncLogResult.NOT_PROCESSED,
+                SyncLogResult.APPLIED, SyncLogResult.APPLIED
+        );
     }
 
     // ---------- 도우미 ----------
