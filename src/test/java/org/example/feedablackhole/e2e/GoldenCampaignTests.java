@@ -708,7 +708,11 @@ class GoldenCampaignTests {
         FakeClient.Response response = client.sync(attempt.logs().stream().map(ObjectNode::toString).toArray(String[]::new));
 
         soft.assertThat(response.status()).as("%s: 상태 코드, 본문 %s", label, response.body()).isEqualTo(attempt.status());
-        if (response.status() == 200 && attempt.status() == 200) {
+        if (response.status() == 200 && attempt.status() == 200 && response.<Object>read("$.rejected") == null) {
+            // 서버가 조작한 로그를 거부하지 않았다. rejected가 없어 아래에서 읽으면 예외로 중단되므로, 어느 조작인지 라벨을 남기고 계속한다
+            soft.fail("%s: 거부되지 않았다(기대 %s, %d에서 거부). 반영된 마지막 번호 %d", label, attempt.code(), attempt.rejectedSeq(),
+                    response.number("$.appliedThroughSeq"));
+        } else if (response.status() == 200 && attempt.status() == 200) {
             soft.assertThat(response.number("$.rejected.seq")).as("%s: 거부된 seq", label).isEqualTo(attempt.rejectedSeq());
             soft.assertThat(response.text("$.rejected.code")).as("%s: 거부 코드", label).isEqualTo(attempt.code());
             soft.assertThat(response.text("$.rejected.type")).as("%s: 거부된 로그 타입", label).isEqualTo(attempt.rejectedType());
