@@ -933,6 +933,151 @@ API 명세의 형식 그대로다. `progress`는 `GET /me/progress`와 같은 �
 - 서버 처리기 테스트(W1-3, W1-5, W1-6)와 E2E(W1-8)는 이 샘플을 기본 시나리오로 쓴다.
 - 서버 테스트가 샘플 묶음 위에서 돈다.
 
+### 3.8a 골든 캠페인 로그 (W4-2a, W4-2b)
+
+클라이언트가 **실제로 판을 돌려** 만든 로그 전체를 서버에 그대로 넣어, 골든 로그는 모두 통과하고 서버가 계산한 상태가 클라이언트와 같은지, 조작한 로그는 정해진 seq·코드에서 멈추는지 확인한다. 1.7a(규칙 값 하나하나의 일치)가 값의 일치를 본다면, 이것은 그 규칙을 거친 **전체 흐름**(Gold 체인, 이정표 보상, 노드 노출, 시간 한도)의 일치를 본다.
+
+**원칙: 테스트는 콘텐츠 값을 코드에 쓰지 않는다.** 밸런스가 바뀌어도(마지막 이정표까지 닿게 되는 경우 포함) 픽스처를 다시 내보내기만 하면 테스트 코드를 고치지 않고 통과해야 한다(C39). 노드 id, 적 종류 id, 숫자, seq, "성장도 3" 같은 값을 테스트에 쓰지 않고, 기대값은 파일(클라이언트가 계산)이나 서버 콘텐츠(`BattleContent`, `NodeTree`, `ContentBattleRules`)에서 읽는다. 그 뒤에 테스트가 실패하면 이식의 어긋남이다.
+
+**파일**
+
+| 항목 | 내용 |
+|---|---|
+| 서버 위치 | `src/test/resources/fixtures/golden-campaign.json` (크기가 커지면 `golden-campaign.json.gz`. 서버 로더는 둘 다 읽는다, C42) |
+| 만드는 곳 | 클라이언트 에디터 메뉴 `BlackHole > Sync Fixtures > Export Campaign Log...`와 통합 메뉴 `Export All Server Fixtures`(아래, C42) |
+| 입력 콘텐츠 | 클라이언트의 실제 콘텐츠. 서버 테스트도 실제 묶음 위에서 돈다(C30, C32). 이 테스트만 스프링 컨텍스트를 `blackhole.content.location=classpath:content/`로 따로 띄운다 |
+| 결정성 | 같은 콘텐츠면 같은 바이트다(C38). 아래 "결정성" 참고 |
+
+**구조**
+
+```json
+{
+  "formatVersion": 1,
+  "contentVersion": "4ab481c6a60d6e49",
+  "campaign": {
+    "battles": 612,
+    "maxGrowthStage": 4,
+    "reachedGrowthStage": 3,
+    "cleared": false,
+    "postClearBattles": 0,
+    "stopReason": "stalled"
+  },
+  "logs": [
+    {"seq": 1, "type": "RESET", ...},
+    {"seq": 2, "type": "RUN_START", ...}
+  ],
+  "checkpoints": [
+    [1, 0, 0],
+    [2, 0, 0]
+  ],
+  "final": {
+    "gold": 0,
+    "growthStage": 3,
+    "nodes": [
+      {"nodeId": "timer-01", "rank": 1}
+    ]
+  },
+  "margins": {
+    "minTimeSlack": {"seq": 3, "seconds": 0.0}
+  }
+}
+```
+
+위 값은 형식을 보여 주기 위한 예시다. 줄 서식은 1.7a와 같은 `PyJson`이고, 서버는 JSON으로 읽을 뿐이므로 줄 서식에는 기대지 않는다.
+
+| 필드 | 내용 |
+|---|---|
+| `campaign.battles` | 돌린 판 수(클리어 뒤 판 포함) |
+| `campaign.maxGrowthStage`, `reachedGrowthStage` | 콘텐츠의 마지막 성장도, 캠페인이 끝났을 때의 성장도 |
+| `campaign.cleared` | 마지막 이정표에 닿았는가(`reachedGrowthStage == maxGrowthStage`) |
+| `campaign.postClearBattles` | 클리어 뒤에 더 돌린 판 수. 클리어하지 못했으면 0, 했으면 3(C40) |
+| `campaign.stopReason` | `cleared`(클리어 뒤 판까지 마침), `stalled`(이정표 없이 N판), `battleLimit`(판 수 상한), `overflow`(다음 판에서 Gold가 `long`을 넘어 그 앞에서 멈춤), `capped`(다음 판이 안전 상한까지 끝나지 않아 그 앞에서 멈춤) |
+| `logs` | `SyncLogFactory`가 만든 로그를 **글자 그대로**(`PendingLog.Json`) 넣는다. 순서: `RESET`, 이어서 판마다 [`RUN_START` → `SETTLEMENT` → 그 판 뒤의 구매들]. 구매는 결산 **뒤**에 둔다(판 도중에 끼면 서버가 열린 판을 포기로 닫는다, C31). seq는 1부터 1씩 증가 |
+| `checkpoints` | 로그마다 하나, `logs`와 같은 순서의 `[seq, 그 로그를 적용한 뒤의 Gold, 그 뒤의 성장도]`. 값은 클라이언트 `ProgressState`에서 읽는다 |
+| `final` | 캠페인이 끝났을 때의 `ProgressState`. 서버의 최종 진행도(`GET /me/progress`)와 완전히 같아야 한다. `nodes`는 처음 산 순서 |
+| `margins.minTimeSlack` | 결산마다 계산한 (S8 상한 − `playedSeconds`)의 최솟값과 그 결산의 seq. 상한은 `timeLimitSeconds + (reachedLevel − startLevel) × growthTimeSeconds + timeBonusCount × killTimeBonusSeconds`다. 음수면 클라이언트가 서버의 시간 검사를 넘은 것이다. 서버의 허용 오차(`TIME_TOLERANCE_*`, C27)가 적절한지 판단하는 실측값이다 |
+
+**결정성**: 내보내기는 판의 값과 로그의 값을 아래처럼 고정한다. 그러지 않으면 내보낼 때마다 파일이 바뀐다.
+
+| 값 | 고정 방법 |
+|---|---|
+| `runId` | 판 번호(1부터)로 만든 소문자 UUID `00000000-0000-4000-8000-{판 번호를 16진수 12자리}`. 실제 게임은 `Guid.NewGuid()`지만 내보내기는 `SyncLogFactory.RunStart(seq, runId, …)`에 직접 넘긴다 |
+| `occurredAtUtc` | `2026-01-01T00:00:00Z`에서 (seq − 1)초 뒤. 시계(`Func<DateTime>`)를 주입한다 |
+| `buildVersion` | `golden` |
+| 시드 | 판 번호에서 정한다(`SyncFixturesMenu`와 같은 식) |
+| 봇·구매 정책 | `NearestEnemyBot`, `CheapestFirstBuyer`(둘 다 결정적) |
+
+**내보내기 도구(W4-2a)가 지킬 것**
+
+- `HeadlessBattle`과 `CheapestFirstBuyer`로 빈 진행도부터 [판 → 결산 → 구매]를 돈다. 끝나는 조건은 다음과 같다.
+  1. 마지막 이정표에 닿았다(`cleared`): 클리어 뒤 판을 **3판 더** 돌린다(C40). 마지막 이정표 이후의 서버 분기(목표 Level 0, 다음 이정표 없음, 결산 금액이 `earnedGold`)가 골든 로그로 확인된다. 클리어 뒤 판은 결산까지만 하고 구매는 하지 않아도 된다.
+  2. 이정표에 닿지 못한 채 300판이 이어졌다(`stalled`). 지금 봇은 마지막 이정표에 닿지 못하고 Gold만 쌓이므로 이 규칙으로 끝난다.
+  3. 판 수 상한(`battleLimit`).
+  4. 다음 판 결산에서 Gold가 `long`을 넘을 것이다(`overflow`). `checked` 산술로 확인하고, 넘는 판은 로그에 넣지 않는다.
+  5. 다음 판이 안전 상한(판 시간 600초)까지 끝나지 않았다(`capped`). 끝나지 않은 판은 결산 로그를 만들 수 없으므로 로그에 넣지 않는다. 마지막 이정표 뒤처럼 시간 추가가 흐르는 시간보다 빠른 판에서 생길 수 있다.
+- 클리어하지 못한 콘텐츠에서는 마지막 이정표 이후의 분기가 골든 로그에 없다. 그 분기는 W1-6 단위 테스트가 맡는다(서버 테스트가 출력만 하고 실패하지는 않는다).
+- 같은 콘텐츠로 두 번 내보내면 파일이 바이트까지 같아야 한다.
+- 파일의 `contentVersion`은 클라이언트가 계산한 서버 콘텐츠 버전(`ServerContent.VersionOf`)이고, 기대값 표(1.7a)와 묶음(W0-1)의 값과 같아야 한다.
+- `checkpoints`와 `final`은 서버 계산이 아니라 **클라이언트가 실제로 진행한 값**이다.
+
+**통합 메뉴 `Export All Server Fixtures`**(C42): 콘텐츠 묶음(W0-1), 기대값 표(W4-1a), 캠페인 로그(W4-2a)를 같은 콘텐츠로 순서대로 한 번에 내보내고, 세 파일의 `contentVersion`이 같은지 확인한다. 밸런스를 바꿀 때 일부만 다시 내보내 어긋나는 일을 막는다.
+
+**서버 테스트(W4-2b)가 지킬 것**
+
+- 파일의 `contentVersion`이 서버 목차의 값과 다르면 값을 비교하지 않고 "픽스처 재생성 필요"로 실패한다(1.7a와 같은 메시지).
+- 최소 커버리지: `reachedGrowthStage ≥ 1`이어야 한다(이정표를 하나도 지나지 않은 빈 캠페인이 통과하지 못하게). 출력에는 덮은 성장도 범위와 마지막 이정표 이후 분기를 덮었는지(`cleared`)를 남긴다.
+- **골든 통과**: 같은 골든 로그를 **두 가지 방식**으로 각각 새 계정에 보낸다. (1) **20개씩 끊어서 자주** 보낸다(오프라인과 온라인이 자주 바뀌어 조금씩 보내는 경우, 어긋난 위치도 좁게 잡힌다). (2) **요청 한도(로그 500개, 본문 1MB)까지 채워서** 보낸다(오프라인으로 쌓인 로그를 한꺼번에 보내는 경우). (2)는 클라이언트(`SyncSender`)가 나누는 규칙(앞에서부터 한도를 넘지 않을 때까지 채운다)과 같고, 한도만큼 채운 요청이 하나는 있어야 한다(없으면 로그가 커져 본문 한도에 먼저 닿았다는 뜻이라 테스트의 의도를 다시 정한다). 두 방식 모두 응답마다 `rejected`가 없고 `appliedThroughSeq`가 보낸 마지막 seq이며, 그 시점의 `checkpoints`(Gold, 성장도)와 같아야 한다. 끝에서 서버 진행도가 `final`과 완전히 같고(노드는 순서 포함), 의심 표시가 0이어야 한다. 어긋나면 새 계정에서 로그를 하나씩 보내 **처음 어긋나는 seq**를 찾아 알린다(진단 경로). 같은 seq를 다시 보내면(재전송) 아무것도 바뀌지 않는다. 조작 테스트의 접두 구간은 요청 수를 줄이려고 100개씩 보낸다(검증 대상이 아니다).
+- **조작 테스트**: 아래 표. 위치는 seq가 아니라 **역할**로 고르고(선택기), 조작 값은 서버 콘텐츠로 계산한다. 접두 구간(seq 1 ~ k−1)을 새 계정에 보낸 뒤 조작 로그를 k번으로 보낸다. 거부 조작의 기대는 모두 같다.
+  - `rejected.seq == k`, `rejected.code`가 표의 값, `appliedThroughSeq == k − 1`.
+  - 진행도가 k − 1 시점의 `checkpoints`와 같다(거부는 아무것도 바꾸지 않는다).
+  - 같은 요청에서 조작 로그 뒤에 원래 k + 1번 로그를 함께 보내도 **반영되지 않는다**(거부 뒤에 멈춘다).
+  - 거부는 상태를 바꾸지 않으므로, 같은 접두 위에서 여러 조작을 연달아 시도해도 된다(접두 재생 횟수를 줄인다). 거부하지 않는 조작(10, 20, 24)은 새 계정에서 한다.
+- **적용 가능성 가드**: 콘텐츠 때문에 조작 조건을 만족하는 로그나 노드가 없으면 그 케이스를 건너뛰지 않고 **실패**시킨다. "표의 모든 조작이 적용되었는가"를 확인하는 테스트가 있다(기본 21건 + 클리어한 파일 2건 + 한계 고정 1건). 커버리지가 말없이 줄어드는 것을 막는다. 실패하면 선택 조건을 고친다.
+
+**선택기**: 조작할 로그를 역할로 고른다.
+
+| 역할 | 조건 |
+|---|---|
+| 초반 | 처음 나오는 `SETTLEMENT` |
+| 이정표 | `reachedMilestone == true`인 첫 `SETTLEMENT` |
+| 중반 | `SETTLEMENT`을 순서대로 센 목록의 가운데 번째(`floor(n / 2)`, 0부터). 클리어한 파일에서는 클리어 뒤 판을 센 목록에서 뺀다 |
+| 후반 | 마지막 `SETTLEMENT`(클리어한 파일에서는 클리어 뒤 판을 뺀 마지막) |
+| 황금 | `kills`에 `golden: true`가 있는 `SETTLEMENT` 중 중반에 가장 가까운 것 |
+| 구매 | 중반 결산에 가장 가까운 `NODE_PURCHASE`(`cost`가 1 이상인 것). 조작이 그 시점의 진행도에 조건을 두면(13, 14, 15) **조건을 만족하는 구매 중** 가장 가까운 것을 쓴다. "후반의 구매"(15)는 후반 결산보다 앞에서 조건을 만족하는 마지막 구매 |
+| 마지막 단계(클리어 파일만) | 클리어 뒤 판의 첫 `SETTLEMENT` |
+
+**조작표**: 기대 코드는 3.4의 검사 순서와 3.6의 코드 순서를 따른 **처음 걸리는 코드**다. 위치가 "3곳"이면 초반·중반·후반에서 각각 한다.
+
+| # | 조작 | 위치 | 기대 |
+|---|---|---|---|
+| 1 | `earnedGold` +1 (kills와 `settledGold`는 그대로) | 3곳 | `SETTLEMENT_GOLD_MISMATCH` (S6) |
+| 2 | `settledGold`만 +1 | 이정표, 중반 | `SETTLEMENT_RESULT_MISMATCH` (S9) |
+| 3 | `exp` +1 | 3곳 | `SETTLEMENT_EXP_MISMATCH` (S3) |
+| 4 | 이정표 결산은 `reachedMilestone`을 `false`로, 중반 결산은 `reachedMilestone`을 `true`로, 또 다른 중반 결산은 `reachedLevel` +1 | 이정표, 중반 | `SETTLEMENT_EXP_MISMATCH` (S4) |
+| 5 | `kills`에 불가능한 항목 하나를 **더한다**: (a) `size = maxSize + 1`, (b) 없는 `enemyId`(`no-such-enemy`), (c) `goldenPossible`이 `false`인 종류의 `golden: true`, (d) `tierPossible`이 `false`인 색 등급. (c)와 (d)는 그런 종류·색이 서버 콘텐츠에 있을 때만 적용한다(없으면 (a), (b)만. 가드는 (a)와 (b)가 적용되는지 본다) | 중반 | `SETTLEMENT_INVALID_KILLS` (S2) |
+| 6 | `goldenCritCount`를 (황금 처치 수 합 + 1)로 | 황금 | `SETTLEMENT_GOLD_MISMATCH` (S5) |
+| 7 | `timeBonusCount`를 (시간 추가가 가능한 종류의 처치 수 합 + 1)로 | 중반 | `SETTLEMENT_TIME_EXCEEDED` (S7) |
+| 8 | `playedSeconds`를 (S8 상한 + 1초)로 | 중반 | `SETTLEMENT_TIME_EXCEEDED` (S8) |
+| 9 | `runId`를 다른 값으로, 또는 같은 결산을 새 seq로 한 번 더 보냄 | 3곳 | `RUN_NOT_OPEN` (S1) |
+| 10 | 판의 `RUN_START`와 `SETTLEMENT` 사이에 **유효한** 구매를 끼움. 골든 로그의 구매 정책은 살 수 있는 노드를 모두 사므로 판 시작 때는 살 수 있는 노드가 없다. 그래서 새 구매를 만들지 않고 **판 시작 바로 앞의 구매 하나를 판 시작 뒤로 옮긴다**(RUN_START, 구매, SETTLEMENT 순서, 뒤 로그의 seq는 그대로 이어 붙인다). 옮긴 구매는 그대로 유효하고, 판 시작의 `startGold`가 서버 값과 달라 의심 표시만 남는다 | 중반 결산에 가장 가까운 판 중 판 시작 바로 앞에 구매가 있는 판(캠페인 후반에는 살 노드가 남지 않아 구매가 없을 수 있다) | 판 시작과 구매는 통과하고, 이어지는 `SETTLEMENT`가 `RUN_NOT_OPEN`(C31). 거부하지 않는 조작이므로 새 계정에서 한다 |
+| 11 | `cost` −1 (Gold는 충분) | 구매 | `COST_MISMATCH` |
+| 12 | `rank` +1 | 구매 | `RANK_MISMATCH` |
+| 13 | 그 시점에 드러나지 않은 노드로 바꿈(`rank` 1) | 구매 | `NODE_HIDDEN` |
+| 14 | 그 시점에 드러났지만 다음 Rank 비용이 Gold보다 큰 노드로 바꿈(`rank`, `cost`는 서버 값) | 구매 | `NOT_ENOUGH_GOLD` |
+| 15 | 그 시점에 이미 최대 Rank인 노드로 바꿈 | 후반의 구매 | `MAX_RANK_REACHED` |
+| 16 | 없는 `nodeId`(`no-such-node`) | 구매 | `UNKNOWN_NODE` |
+| 17 | 로그 하나를 빼고 그 다음 로그를 보냄 | 중반 | 다음 로그가 `SEQ_GAP`. `appliedThroughSeq`는 뺀 로그의 앞 |
+| 18 | 같은 요청 안에서 인접한 두 로그의 순서를 바꿈 | 중반 | HTTP 400 `INVALID_REQUEST`. 거부 코드가 아니며 아무것도 적용하지 않는다(진행도 불변) |
+| 19 | `contentVersion`을 다른 값으로 | 중반의 결산, 구매 | `CONTENT_VERSION_MISMATCH` |
+| 20 | `RUN_START`의 `startLevel`을 +1, `timeLimitSeconds`를 다르게, `startSupply`의 한 `count`를 +1 | 중반 | **거부하지 않는다.** 의심 표시가 남고, 이어지는 정상 결산은 통과하며 `checkpoints`와 같은 상태로 계속된다. 새 계정에서 한다 |
+| 21 | 이미 쓴 `runId`로 `RUN_START` | 중반 | `DUPLICATE_RUN_ID` |
+| 22 | (클리어 파일만) 마지막 이정표에 닿은 뒤의 결산에서 `settledGold`를 `earnedGold`와 다르게 | 마지막 단계 | `SETTLEMENT_RESULT_MISMATCH` (S9) |
+| 23 | (클리어 파일만) 같은 결산에서 `reachedMilestone`을 `true`로 | 마지막 단계 | `SETTLEMENT_EXP_MISMATCH` (S4) |
+| 24 | **한계 고정**: 장부를 일관되게 부풀린다. 처치 하나를 더 센 것으로 하고(`kills`의 황금이 아닌 항목 하나의 `count`를 1 올린다), `exp`와 `earnedGold`와 `settledGold`를 그 항목의 `expOf`, `goldOf`만큼 더한다. 레벨, 이정표, 시간 추가가 바뀌지 않는 결산을 고른다(이정표가 아닌 결산 중 `levelForExp(exp + Δ)`가 `reachedLevel`과 같은 것) | 중반에 가장 가까운 그런 결산 | **통과해야 한다.** 서버가 판 내용을 재현하지 못하고 통계 검사(S10)가 없어 이런 조작은 막지 못한다(계획서 10장). 이 동작을 고정해 두고, S10을 넣을 때 이 케이스가 의도된 변경으로 바뀌는지 확인한다. 반영된 뒤 서버 Gold가 `checkpoints`의 해당 값 + Δ인지만 본다(그 뒤 로그는 보내지 않는다). 새 계정에서 한다 |
+
+- 조작의 값은 접두 구간을 보낸 뒤 서버에서 `GET /me/progress`로 읽은 산 노드와 성장도로 `ContentBattleRules.upgradesFor`, `setupFor`를 계산해 정한다(예: 5의 `maxSize + 1`, 7의 상한, 8의 S8 상한, 13~15의 노드). 계산에 쓰는 규칙은 서버 코드 그대로이므로, 규칙에 버그가 있어도 이 테스트는 같은 값을 쓴다. 규칙 자체의 정확성은 1.7a가 확인한다.
+- 5, 6, 7, 8의 조작은 다른 필드를 건드리지 않는다. 앞선 검사(S1~S5)가 통과해야 뒤의 검사에 닿으므로, 한 조작이 하나의 검사만 겨냥하게 값을 고른다.
+
 ### 3.9 결정 사항 (3장, 확정)
 
 | # | 결정 | 이유 |
@@ -942,6 +1087,12 @@ API 명세의 형식 그대로다. `progress`는 `GET /me/progress`와 같은 �
 | C14 | 한도: 요청당 500개, 1 MB. 클라이언트가 나눠 보낸다 | 오프라인으로 쌓인 로그도 몇 번의 요청으로 보낸다 |
 | C15 | 정의되지 않은 필드는 무시한다 | 필드를 더할 때 옛 서버가 거부하지 않는다 |
 | C16 | `contentVersion`이 서버와 다르면 `CONTENT_VERSION_MISMATCH`로 거부한다. 클라이언트는 그 실행을 오프라인(`ContentOutdated`)으로 바꾼다 | 계획서 D3. 최근 몇 버전의 규칙을 보관해 하위 호환을 허용하는 것은 후속 과제(W5-3) |
+| C37 | 골든 캠페인 파일은 `logs`, 로그마다의 `checkpoints`, 최종 `final`, `campaign`(범위), `margins`(S8 여유)를 함께 담는다 | 어긋남이 처음 생기는 seq를 바로 찾고, 서버 최종 상태를 클라이언트의 실제 진행과 완전히 비교한다. S8 허용 오차의 실측값도 같은 파일에서 얻는다 |
+| C38 | 골든 로그는 `runId`, 시각, 빌드 버전, 시드를 고정해 같은 콘텐츠면 같은 바이트로 내보낸다 | 내보낼 때마다 파일이 바뀌면 diff로 콘텐츠 변화의 영향을 볼 수 없다. `SyncLogFactory`가 `runId`와 시계를 바깥에서 받으므로 코드 변경 없이 된다 |
+| C39 | W4-2b 테스트는 콘텐츠 값(노드 id, 종류 id, 숫자, seq, 성장도 수)을 코드에 쓰지 않는다. 조작 위치는 역할 선택기로, 조작 값은 서버 콘텐츠로 계산한다. 적용할 수 없는 케이스는 건너뛰지 않고 실패시킨다 | 밸런스가 바뀌어도(마지막 이정표까지 닿게 되어도) 픽스처만 다시 내보내면 테스트가 통과해야 한다. 조용히 줄어드는 커버리지를 막는다 |
+| C40 | 마지막 이정표에 닿는 콘텐츠면 클리어 뒤 판을 3판 더 돌려 골든에 넣는다. 닿지 못하면 그 분기는 W1-6 단위 테스트가 맡는다 | 마지막 이정표 이후 분기(목표 Level 0, 다음 이정표 없음)가 밸런스가 바뀌는 즉시 골든으로 확인된다. 판 수를 3으로 제한해 클리어 뒤 Gold가 `long` 한도에 가까워지는 것을 막는다 |
+| C41 | 서버가 막지 못하는 조작(장부를 일관되게 부풀림)을 "통과해야 하는 조작"으로 고정하는 테스트를 둔다(24번) | 알려진 한계(계획서 10장)를 코드로 남기고, 통계 검사(S10)를 넣을 때 변경이 의도된 것인지 알게 한다 |
+| C42 | 콘텐츠 묶음, 기대값 표, 캠페인 로그를 한 번에 내보내는 통합 메뉴를 둔다. 서버 로더는 골든 파일의 `.json`과 `.json.gz`를 모두 읽는다 | 밸런스를 바꿀 때 일부만 다시 내보내 `contentVersion`이 어긋나는 일을 막는다. 파일이 커져도 확장자만 바꾸면 되어 테스트 구조가 그대로다 |
 
 ---
 
