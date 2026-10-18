@@ -278,7 +278,170 @@ public interface KindSetup {
 | 성장 공급·시작 공급 | `GameSessionFactory.StartSupplyOf` | 같은 순서(콘텐츠 시작 공급 → 보너스 → 변환 사슬 위상 정렬) |
 | 황금 치명 보너스 | `(long) Math.Round(gold * critRewardScale, MidpointRounding.AwayFromZero)` | long × float이라 float 곱셈 |
 
-- 일치 여부는 C#이 생성한 기대값 표(W4-1a, 에디터 도구 `Editor/SyncFixtures`)로 확인한다. 이 표가 이 장의 실행 가능한 기준이다. 표는 콘텐츠 버전에 묶여 있어 `contentVersion`을 함께 담고, 서버 콘텐츠 버전과 다르면 다시 만들어야 한다.
+- 일치 여부는 C#이 생성한 기대값 표(W4-1a, 에디터 도구 `Editor/SyncFixtures`)로 확인한다(형식은 1.7a). 이 표가 이 장의 실행 가능한 기준이다. 표는 콘텐츠 버전에 묶여 있어 `contentVersion`을 함께 담고, 서버 콘텐츠 버전과 다르면 다시 만들어야 한다.
+
+### 1.7a 기대값 표 (W4-1a, W4-1b)
+
+C#이 실제 규칙으로 계산한 값을 JSON으로 내보내고, 서버 테스트(W4-1b)가 `BattleRules`의 결과와 **완전히 같은지** 확인한다. 1.7이 말하는 "실행 가능한 기준"이 이 파일이다.
+
+**파일**
+
+| 항목 | 내용 |
+|---|---|
+| 서버 위치 | `src/test/resources/fixtures/rules-expected.json` (서버 저장소에 커밋한다) |
+| 만드는 곳 | 클라이언트 에디터 메뉴 `BlackHole > Sync Fixtures > Export Rules Table...` (A, W4-1a) |
+| 입력 콘텐츠 | 클라이언트의 **실제 콘텐츠**(`GameContentSetup`). 서버 테스트도 샘플 묶음이 아니라 **실제 묶음**(`src/main/resources/content`)을 읽는다(C32) |
+| 결정성 | 같은 콘텐츠면 같은 바이트다. 시각, 경로, 도구 버전 같은 값은 넣지 않는다. 키 순서는 아래 예시 그대로, 들여쓰기 2칸(내보내기 도구의 `PyJson`) |
+| 수 표기 | 정수(`long`, `int`)는 정수, `float`은 1.4와 같은 가장 짧은 왕복 표기. 서버는 `Float.parseFloat`, `Long.parseLong`으로 읽는다 |
+
+**구조**: 성장도(stage)와 산 노드(loadout)를 나눈다. `RunSetup`에서 성장도는 레벨과 이정표만, 노드는 시간·공급·적 구성만 정하므로 두 축은 독립이다. 서버 테스트가 둘을 교차해 돌리면 의도하지 않은 결합도 잡힌다.
+
+```json
+{
+  "formatVersion": 1,
+  "contentVersion": "4ab481c6a60d6e49",
+  "stages": [
+    {
+      "growthStage": 0,
+      "startLevel": 0,
+      "goalLevel": 10,
+      "startExp": 0,
+      "nextMilestone": {"level": 10, "targetGold": 690000},
+      "levelForExp": [
+        [0, 0],
+        [9, 0],
+        [10, 1]
+      ],
+      "milestoneRewards": [
+        [0, 690000],
+        [689999, 1],
+        [690000, 0],
+        [690001, 0]
+      ]
+    }
+  ],
+  "loadouts": [
+    {
+      "name": "empty",
+      "nodes": { },
+      "stats": {
+        "timer": {"value": 12, "gain": 0}
+      },
+      "timeLimitSeconds": 12,
+      "growthTimeSeconds": 0,
+      "killTimeBonusSeconds": 0.3,
+      "startSupply": [
+        {
+          "enemyId": "asteroid",
+          "count": 20
+        }
+      ],
+      "kinds": [
+        {
+          "enemyId": "asteroid",
+          "pickup": false,
+          "maxSize": 1,
+          "tierPossible": [true, false, false, false, false, false],
+          "goldenPossible": false,
+          "timeChance": 0,
+          "golden": null,
+          "gold": [
+            [1],
+            [6]
+          ],
+          "goldGolden": null,
+          "exp": [
+            [1],
+            [2]
+          ],
+          "critBonus": null
+        }
+      ]
+    }
+  ],
+  "arithmetic": {
+    "multiply": [
+      [5, 0.5, 3],
+      [16777217, 1, 16777217]
+    ],
+    "critBonus": [
+      [5, 0.5, 3],
+      [16777217, 1, 16777216]
+    ]
+  }
+}
+```
+
+위 값은 형식을 보여 주기 위한 예시다(실제 값은 내보내기 도구가 채운다). 줄 서식은 `PyJson`이다: 객체와 배열은 한 항목에 한 줄이고, 숫자 쌍·숫자 행·`stats` 항목처럼 짧은 값은 한 줄(`[0, 0]`, `{"value": 12, "gain": 0}`)로 쓴다. 서버는 JSON으로 읽을 뿐이므로 줄 서식에는 기대지 않는다.
+
+**`stages[]`**: 성장도 0부터 마지막(`HqGrowthDefinition.maxStage()`)까지 모두. 서버 비교 대상은 `RunSetup`의 같은 이름 메서드다.
+
+| 필드 | 원본(클라이언트) | 서버 비교 대상 |
+|---|---|---|
+| `startLevel`, `goalLevel`, `startExp` | `Hq.StartLevel`, `Hq.GoalLevel`, 시작 레벨의 누적 EXP | `startLevel()`, `goalLevel()`, `startExp()` |
+| `nextMilestone` | 다음 이정표(`level`, `targetGold`). 마지막 이정표 뒤면 `null` | `nextMilestone()` (비어 있음 = `null`) |
+| `levelForExp` | `[exp, level]` 쌍. 클라이언트 `Hq`에 EXP를 더해 레벨을 올린 결과(`RaiseLevels`) | `levelForExp(exp)` |
+| `milestoneRewards` | `[현재 Gold, 보상]` 쌍. `HqMilestone.RewardFor` | `nextMilestone().rewardFor(gold)`. 다음 이정표가 없으면 빈 배열 |
+
+- `levelForExp`의 exp 목록(오름차순, 중복 없음, 0 이상): `startExp − 1`(0 이상일 때), `startExp`, 그리고 이 성장도의 시작 레벨 바로 위 레벨부터 레벨표 끝까지 각 레벨의 누적 EXP `t`에 대해 `t − 1`, `t`, `t + 1`. 목표 레벨에서 멈추는지와 사다리 끝에서 멈추는지가 함께 확인된다.
+- `milestoneRewards`의 Gold 목록: `0`, `1`, `target − 1`, `target`, `target + 1`, `2 × target`(0 미만 제외, 중복 제거).
+
+**`loadouts[]`**: 아래 6종, 이 순서로 모두 넣는다(C33).
+
+| `name` | 산 노드 |
+|---|---|
+| `empty` | 없음 |
+| `partial-10`, `partial-25`, `partial-50`, `partial-75` | 싼 노드부터 사는 정책(`CheapestFirstBuyer`: 지금 살 수 있는 노드 중 다음 Rank가 가장 싼 것, 같은 값이면 노드 id 순)으로 Gold 제한 없이 끝까지 산 구매 순서에서, 총 구매 횟수 `N`의 `p`%(`floor(N × p / 100)`번째 구매까지)를 산 상태. 앞 상태가 뒤 상태에 포함된다 |
+| `all` | 모든 노드를 마지막 Rank까지 산 상태(노출 여부와 무관) |
+
+| 필드 | 원본(클라이언트) | 서버 비교 대상 |
+|---|---|---|
+| `nodes` | 노드 id → Rank(산 노드만, 키 순서는 노드 배치 순서) | 입력: `upgradesFor(nodes)` |
+| `stats` | `battle.json`이 참조하는 모든 statId의 `value`, `gain`(`UpgradeStatValues.ValueOf`, `GainOf`). 키 순서는 `battle.json`을 위에서 아래로 읽으며 처음 참조되는 순서(최상위 `stats`, 이어서 `enemies[]` 순서대로 `mass`, `size`, `startSupply`, `growthSupply`, `upgrade`, `timeChance`, `traitChance`(성질 순서), `goldenMultiplier`, `goldenCritChance`, `goldenCritRewardScale`) | `valueOf(statId)`, `gainOf(statId)` |
+| `timeLimitSeconds`, `growthTimeSeconds`, `killTimeBonusSeconds` | `GameSession.StartInfo.TimeLimitSeconds`, 성장 시간(`HqUpgradeStats.GrowthTimeFrom`), 시간 추가 1회의 초 | `timeLimitSeconds()`, `growthTimeSeconds()`, `killTimeBonusSeconds()` |
+| `startSupply` | `GameSession.StartInfo.StartSupply` | `startSupply()` (순서 포함) |
+| `kinds[]` | `battle.json`의 `enemies` 순서 그대로 | `kind(enemyId)` |
+
+**`kinds[]`** 한 항목 (서버 비교 대상은 `KindSetup`의 같은 이름 메서드):
+
+| 필드 | 원본(클라이언트) | 비고 |
+|---|---|---|
+| `enemyId`, `pickup` | 종류와 수거형 여부 | |
+| `maxSize` | 이 판 구성의 `Size` | `maxSize()` |
+| `tierPossible` | 색 등급마다 `TierRatios[tier] > 0` | `tierPossible(tier)`. 색 등급 수(공급 종류 6, 수거형 1)만큼 |
+| `goldenPossible` | 황금 성질이 있고 생성 확률이 0보다 큼 | `goldenPossible()` |
+| `timeChance` | 이 판 구성의 `TimeChance` | `timeChance()` |
+| `golden` | 노드가 반영된 황금 수치(`multiplier`, `critChance`, `critRewardScale`). **종류에 황금 성질이 없을 때만** `null`이다(생성 확률이 0이어도 값이 있다) | `golden()` (비어 있음 = `null`) |
+| `gold`, `exp` | `[tier][size − 1]`. 크기는 1부터 `maxSize`까지, 색 등급은 전부(질량이 0인 색도 넣는다). 황금이 아닌 개체의 값(`EnemyStatTable.Of`) | `goldOf(tier, size, false)`, `expOf(tier, size)` |
+| `goldGolden` | `gold`와 같은 모양, 황금 개체의 Gold(황금 배율 반영). **`goldenPossible`이 `false`면 `null`**(서버도 이때 `goldOf(…, true)`가 예외를 던진다) | `goldOf(tier, size, true)` |
+| `critBonus` | `gold`와 같은 모양. 황금 치명 보너스. 클라이언트 `DeathRewards.CritBonusOf`를 그대로 부른 값이다(`long × float`을 float 곱셈으로, .5는 0에서 먼 쪽으로 반올림. C28). `goldenPossible`이 `false`면 `null` | `goldenCritBonusOf(tier, size)` |
+
+**`arithmetic`**: 콘텐츠와 무관한 곱셈·반올림 확인 지점이다. 현재 콘텐츠는 황금 배율이 정수이고 황금 Gold가 작아서 float과 double의 차이, 정확히 .5가 되는 곱, 큰 값의 정밀도를 한 번도 건드리지 않는다. 그래서 서버가 이 식들을 틀리게 구현해도 `stages`·`loadouts` 비교는 통과한다(변이 확인으로 확인했다). 이 칸이 그 빈틈을 메운다. 입력은 값 16개 × 배율 14개이고(`RulesTableBuilder.ArithmeticValues`·`ArithmeticFactors`), 결과는 클라이언트의 실제 식이 낸다. 모두 `[값, 배율, 결과]` 쌍이다.
+
+| 칸 | 원본(클라이언트) | 서버 비교 대상 |
+|---|---|---|
+| `multiply` | `EnemyDefinition.Multiply(value, factor)`: `long × (double) float`, .5는 0에서 먼 쪽. 크기 배율, 황금 배율을 곱하는 식 | `Rounding.scaled(value, factor)` |
+| `critBonus` | `DeathRewards.CritBonusOf(gold, scale)`: `long × float`을 **float 곱셈**으로, .5는 0에서 먼 쪽(C28) | `Rounding.critBonus(gold, scale)` |
+
+- 값과 배율은 곱이 `long`을 넘지 않는 범위다. 홀수 × 0.5(정확히 .5), 2^24(16777216)를 넘는 값, 0.1처럼 float로 정확히 나타낼 수 없는 배율이 들어 있다.
+- 서버 `KindComposition`은 크기·황금 배율 곱과 치명 보너스에 이 두 도우미를 쓴다. 도우미만 틀려도 `loadouts`가 아니라 `arithmetic`이 먼저 잡는다.
+
+**서버 테스트(W4-1b)가 지킬 것**
+
+- 비교는 **완전 일치**다. float은 비트 비교(`Float.floatToIntBits`), long은 `==`다. 허용 오차를 두지 않는다.
+- 서버 콘텐츠는 실제 묶음이다(`ContentBundleLoader`로 `/content/`를 읽는다. `RealContentRulesTests`와 같은 방식). 파일의 `contentVersion`이 서버 목차의 값과 다르면 값을 비교하지 않고 "픽스처 재생성 필요"로 실패한다.
+- 모든 loadout에서 `upgradesFor(nodes)`를 만들고, 모든 stage에서 `setupFor(stage, upgrades)`를 만든다. loadout 항목(`stats`, 시간, `startSupply`, `kinds`)은 모든 stage에서, stage 항목은 모든 loadout에서 같아야 한다(교차 조합 전체).
+- `goldGolden`·`critBonus`가 `null`인 종류는 `goldenPossible() == false`도 함께 확인한다. `golden`이 `null`인 종류는 `golden()`이 비어 있는지 확인한다. `golden`이 있고 `goldenPossible`이 `false`인 종류(황금 성질은 있으나 생성 확률 0)도 있다.
+- `arithmetic`의 두 칸도 같은 완전 일치로 비교한다.
+- 값이 어긋나면 `stats`(합산·clamp 단계)와 그 아래 값(규칙 단계)을 나눠 보고하도록 메시지를 쓴다. 어느 loadout의 어느 필드인지(예: `partial-50 / planet / goldGolden[2][1]`)가 메시지에 나와야 한다.
+
+**내보내기 도구(W4-1a)가 지킬 것**
+
+- 클라이언트가 예외를 던지는 상태(예: 성질 확률 합이 100%를 넘는 `all`)는 건너뛰지 않고 내보내기를 실패시킨다.
+- 같은 콘텐츠로 두 번 내보내면 파일이 바이트까지 같아야 한다.
+- `critBonus`는 곱한 결과를 `(float)`로 한 번 더 받아 float 정밀도로 확정한다(`DeathRewards.CritBonusOf`). 이렇게 하지 않으면 런타임에 따라 값이 달라진다: Unity 에디터(Mono)는 float 곱셈의 중간 결과를 더 높은 정밀도로 들고 있다가 반올림하고(`16777215 × 1.5` → 25165823), IL2CPP 빌드(Android, WebGL)와 Java는 엄밀한 float로 계산한다(25165822). 표를 에디터에서 내보내므로 이 확정이 없으면 서버와 어긋난다.
+- 파일의 `contentVersion`은 클라이언트가 계산한 서버 콘텐츠 버전(`ServerContent.VersionOf`)이다.
+- 콘텐츠를 바꾸면 W0-1의 묶음 내보내기 뒤에 이 표도 다시 내보낸다(계획서 4.1의 6).
 
 ### 1.8 결정 사항 (1장, 확정)
 
@@ -291,7 +454,12 @@ public interface KindSetup {
 | C5 | 서버 전투 계산은 BigDecimal이 아니라 C#과 같은 float·double로 한다 | 정확한 등식 검사를 위해서다. 노드 비용(정수)은 기존 BigDecimal 모델을 그대로 쓴다 |
 | C28 | 황금 치명 보너스는 long × float을 float 곱셈으로 계산한다 | 클라이언트도 float 곱셈이다. double로 곱하면 큰 Gold에서 값이 달라져 S5, S6 등식이 실패한다 |
 | C29 | UpgradeContentCheck는 서버 코드로 옮기지 않고 테스트로 확인한다 | 콘텐츠 작성 실수를 막는 검사라 요청 처리에는 필요 없다. 테스트가 같은 확인을 한다 |
-| C30 | 서버 테스트는 샘플 묶음 위에서 진행한다 | 샘플 로그(계약 3.8)가 샘플 묶음 기준이고, 샘플은 값이 고정이라 실제 콘텐츠가 바뀌어도 테스트가 깨지지 않는다 |
+| C30 | 서버 테스트는 샘플 묶음 위에서 진행한다. 단 실제 콘텐츠에 묶인 픽스처 테스트(W4-1b, W4-2b)는 예외로, 실제 묶음(`src/main/resources/content`)을 쓴다(C32) | 샘플 로그(계약 3.8)가 샘플 묶음 기준이고, 샘플은 값이 고정이라 실제 콘텐츠가 바뀌어도 테스트가 깨지지 않는다 |
+| C32 | 이식 검증 픽스처(기대값 표, 골든 로그)는 클라이언트의 실제 콘텐츠로 만들고, 그 테스트는 서버의 실제 묶음 위에서 돈다 | 클라이언트 콘텐츠가 확정되어 마무리 검증 단계다. 서버에 옮겨 와 버전을 맞춘 뒤(`contentVersion` 일치) 그 값을 기준으로 이식을 검증한다. 콘텐츠가 바뀌면 픽스처 재생성이 필요하다고 테스트가 알린다 |
+| C33 | 기대값 표의 노드 상태(loadout)는 `empty`, `partial-10/25/50/75`, `all` 6종으로 한다. 노드 하나씩 단독으로 산 상태는 넣지 않는다 | 구매 순서가 결정적이고 파일이 작다. 단독 진단은 필요할 때 더한다 |
+| C34 | 기대값 표는 성장도(stage)와 산 노드(loadout)를 나눠 담고 서버 테스트가 교차해서 확인한다 | 두 축이 독립이라 파일이 작아지고, 서버 구현이 둘을 섞어 쓰면 교차 확인에서 잡힌다 |
+| C35 | 기대값 표에 콘텐츠와 무관한 산술 확인 지점(`arithmetic`: `multiply`, `critBonus`)을 둔다. 서버는 두 식을 `Rounding.scaled`, `Rounding.critBonus`로 모은다 | 현재 콘텐츠는 float·double 차이와 반올림 경계를 건드리지 않아 `loadouts`만으로는 틀린 구현을 못 잡는다(변이 확인에서 3종을 놓쳤다). 클라이언트의 같은 식이 낸 값으로 직접 확인한다 |
+| C36 | 클라이언트 `CritBonusOf`는 곱셈 결과를 `(float)`로 확정한다 | 에디터(Mono)와 IL2CPP·서버의 float 곱셈이 2^24 이상에서 갈린다. 실제 게임 값(황금 Gold 최대 약 1,900)에서는 같아 동작은 바뀌지 않는다 |
 
 ### 1.9 산출물
 
@@ -299,7 +467,8 @@ public interface KindSetup {
 |---|---|---|
 | 묶음 목차, 버전 계산(기준 구현) | `content/ContentManifest`, `content/ContentVersion` | W0-3(B), W0-1·W0-2(A·C가 C#으로 같은 계산을 구현) |
 | 전투 콘텐츠 객체(1.5) | `battle/content/*` | W0-3, W1-4(B), W1-6(A) |
-| 전투 규칙(1.6~1.7) | `battle/rules/*`: 인터페이스와 구현(`ContentBattleRules` 빈, `NodeUpgradeValues`, `RunComposition`, `KindComposition`, `UpgradeChain`, `MassRule`, `SizeRule`, `StartSupply`, `Rounding`) | **구현 완료**(W1-4, B). 쓰는 곳: W1-5(B), W1-6(A). C# 기대값 표 일치 확인은 W4-1b |
+| 전투 규칙(1.6~1.7) | `battle/rules/*`: 인터페이스와 구현(`ContentBattleRules` 빈, `NodeUpgradeValues`, `RunComposition`, `KindComposition`, `UpgradeChain`, `MassRule`, `SizeRule`, `StartSupply`, `Rounding`) | **구현 완료**(W1-4, B). 쓰는 곳: W1-5(B), W1-6(A). C# 기대값 표 일치 확인은 W4-1b(형식은 1.7a) |
+| 기대값 표(1.7a) | `src/test/resources/fixtures/rules-expected.json`(W4-1a가 만들고 서버에 커밋), 서버 테스트 W4-1b | W4-1a(A), W4-1b(B) |
 | 샘플 묶음 | `src/test/resources/content-sample/` | W0-3 로더 테스트(B) |
 | 테스트 | `ContentVersionTests`(샘플 묶음의 목차 버전과 Java 계산이 같은지), `HqGrowthDefinitionTests` | - |
 
@@ -569,7 +738,8 @@ namespace BlackHole.Net
 - **로그인과 시작 동기화가 끝날 때까지 시작 버튼을 막는다.** 시작 동기화가 끝나야 진행도가 확정되기 때문이다. 동기화(3장)가 구현되기 전까지는 로그인이 끝나면(`Online` 또는 `Offline`) 푼다.
 - 시작 버튼을 막는 최대 시간은 `loginBudgetSeconds + syncTimeoutSeconds`(기본 18초)다. 서버에 닿지 않을 때는 대부분 연결 오류가 곧바로 와서 훨씬 짧다.
 
-- **W2-3 구현 범위(2026-10-14, A)**: 별도 타이틀 변경은 이번 범위가 아니다(클라이언트 폴리싱 담당). `GameBootstrap`이 콘텐츠·진행 저장을 읽은 뒤 **타이틀로 가기 전에** `IAuthSession.StartAsync()`를 기다린다(최대 `loginBudgetSeconds`, 대기 중 화면 표시 없음). 그래서 위 상태 텍스트 표시와 시작 버튼 막기는 구현하지 않았고, 결과는 `[인증]` 로그로만 남긴다. 시작 동기화(W3-4)가 생기면 같은 지점에서 로그인 뒤 동기화까지 기다린다.
+- **W2-3 구현 범위(2026-10-14, A)**: 별도 타이틀 변경은 이번 범위가 아니다(클라이언트 폴리싱 담당). `GameBootstrap`이 콘텐츠·진행 저장을 읽은 뒤 **타이틀로 가기 전에** `IAuthSession.StartAsync()`를 기다린다(최대 `loginBudgetSeconds`, 대기 중 화면 표시 없음). 그래서 위 상태 텍스트 표시와 시작 버튼 막기는 구현하지 않았고, 결과는 `[인증]` 로그로만 남긴다.
+- **W3-4 반영(2026-10-16)**: 같은 지점에서 로그인 뒤 시작 동기화(`SyncSender.SyncOnStartupAsync()`)까지 기다린 다음 타이틀로 간다(최대 `loginBudgetSeconds + syncTimeoutSeconds`). 서버를 쓰지 않는 실행(`Offline(Disabled)`)은 전송기를 만들지 않는다.
 
 ### 2.9 결정 사항 (2장, 확정)
 
@@ -763,6 +933,151 @@ API 명세의 형식 그대로다. `progress`는 `GET /me/progress`와 같은 �
 - 서버 처리기 테스트(W1-3, W1-5, W1-6)와 E2E(W1-8)는 이 샘플을 기본 시나리오로 쓴다.
 - 서버 테스트가 샘플 묶음 위에서 돈다.
 
+### 3.8a 골든 캠페인 로그 (W4-2a, W4-2b)
+
+클라이언트가 **실제로 판을 돌려** 만든 로그 전체를 서버에 그대로 넣어, 골든 로그는 모두 통과하고 서버가 계산한 상태가 클라이언트와 같은지, 조작한 로그는 정해진 seq·코드에서 멈추는지 확인한다. 1.7a(규칙 값 하나하나의 일치)가 값의 일치를 본다면, 이것은 그 규칙을 거친 **전체 흐름**(Gold 체인, 이정표 보상, 노드 노출, 시간 한도)의 일치를 본다.
+
+**원칙: 테스트는 콘텐츠 값을 코드에 쓰지 않는다.** 밸런스가 바뀌어도(마지막 이정표까지 닿게 되는 경우 포함) 픽스처를 다시 내보내기만 하면 테스트 코드를 고치지 않고 통과해야 한다(C39). 노드 id, 적 종류 id, 숫자, seq, "성장도 3" 같은 값을 테스트에 쓰지 않고, 기대값은 파일(클라이언트가 계산)이나 서버 콘텐츠(`BattleContent`, `NodeTree`, `ContentBattleRules`)에서 읽는다. 그 뒤에 테스트가 실패하면 이식의 어긋남이다.
+
+**파일**
+
+| 항목 | 내용 |
+|---|---|
+| 서버 위치 | `src/test/resources/fixtures/golden-campaign.json` (크기가 커지면 `golden-campaign.json.gz`. 서버 로더는 둘 다 읽는다, C42) |
+| 만드는 곳 | 클라이언트 에디터 메뉴 `BlackHole > Sync Fixtures > Export Campaign Log...`와 통합 메뉴 `Export All Server Fixtures`(아래, C42) |
+| 입력 콘텐츠 | 클라이언트의 실제 콘텐츠. 서버 테스트도 실제 묶음 위에서 돈다(C30, C32). 이 테스트만 스프링 컨텍스트를 `blackhole.content.location=classpath:content/`로 따로 띄운다 |
+| 결정성 | 같은 콘텐츠면 같은 바이트다(C38). 아래 "결정성" 참고 |
+
+**구조**
+
+```json
+{
+  "formatVersion": 1,
+  "contentVersion": "4ab481c6a60d6e49",
+  "campaign": {
+    "battles": 612,
+    "maxGrowthStage": 4,
+    "reachedGrowthStage": 3,
+    "cleared": false,
+    "postClearBattles": 0,
+    "stopReason": "stalled"
+  },
+  "logs": [
+    {"seq": 1, "type": "RESET", ...},
+    {"seq": 2, "type": "RUN_START", ...}
+  ],
+  "checkpoints": [
+    [1, 0, 0],
+    [2, 0, 0]
+  ],
+  "final": {
+    "gold": 0,
+    "growthStage": 3,
+    "nodes": [
+      {"nodeId": "timer-01", "rank": 1}
+    ]
+  },
+  "margins": {
+    "minTimeSlack": {"seq": 3, "seconds": 0.0}
+  }
+}
+```
+
+위 값은 형식을 보여 주기 위한 예시다. 줄 서식은 1.7a와 같은 `PyJson`이고, 서버는 JSON으로 읽을 뿐이므로 줄 서식에는 기대지 않는다.
+
+| 필드 | 내용 |
+|---|---|
+| `campaign.battles` | 돌린 판 수(클리어 뒤 판 포함) |
+| `campaign.maxGrowthStage`, `reachedGrowthStage` | 콘텐츠의 마지막 성장도, 캠페인이 끝났을 때의 성장도 |
+| `campaign.cleared` | 마지막 이정표에 닿았는가(`reachedGrowthStage == maxGrowthStage`) |
+| `campaign.postClearBattles` | 클리어 뒤에 더 돌린 판 수. 클리어하지 못했으면 0, 했으면 3(C40) |
+| `campaign.stopReason` | `cleared`(클리어 뒤 판까지 마침), `stalled`(이정표 없이 N판), `battleLimit`(판 수 상한), `overflow`(다음 판에서 Gold가 `long`을 넘어 그 앞에서 멈춤), `capped`(다음 판이 안전 상한까지 끝나지 않아 그 앞에서 멈춤) |
+| `logs` | `SyncLogFactory`가 만든 로그를 **글자 그대로**(`PendingLog.Json`) 넣는다. 순서: `RESET`, 이어서 판마다 [`RUN_START` → `SETTLEMENT` → 그 판 뒤의 구매들]. 구매는 결산 **뒤**에 둔다(판 도중에 끼면 서버가 열린 판을 포기로 닫는다, C31). seq는 1부터 1씩 증가 |
+| `checkpoints` | 로그마다 하나, `logs`와 같은 순서의 `[seq, 그 로그를 적용한 뒤의 Gold, 그 뒤의 성장도]`. 값은 클라이언트 `ProgressState`에서 읽는다 |
+| `final` | 캠페인이 끝났을 때의 `ProgressState`. 서버의 최종 진행도(`GET /me/progress`)와 완전히 같아야 한다. `nodes`는 처음 산 순서 |
+| `margins.minTimeSlack` | 결산마다 계산한 (S8 상한 − `playedSeconds`)의 최솟값과 그 결산의 seq. 상한은 `timeLimitSeconds + (reachedLevel − startLevel) × growthTimeSeconds + timeBonusCount × killTimeBonusSeconds`다. 음수면 클라이언트가 서버의 시간 검사를 넘은 것이다. 서버의 허용 오차(`TIME_TOLERANCE_*`, C27)가 적절한지 판단하는 실측값이다 |
+
+**결정성**: 내보내기는 판의 값과 로그의 값을 아래처럼 고정한다. 그러지 않으면 내보낼 때마다 파일이 바뀐다.
+
+| 값 | 고정 방법 |
+|---|---|
+| `runId` | 판 번호(1부터)로 만든 소문자 UUID `00000000-0000-4000-8000-{판 번호를 16진수 12자리}`. 실제 게임은 `Guid.NewGuid()`지만 내보내기는 `SyncLogFactory.RunStart(seq, runId, …)`에 직접 넘긴다 |
+| `occurredAtUtc` | `2026-01-01T00:00:00Z`에서 (seq − 1)초 뒤. 시계(`Func<DateTime>`)를 주입한다 |
+| `buildVersion` | `golden` |
+| 시드 | 판 번호에서 정한다(`SyncFixturesMenu`와 같은 식) |
+| 봇·구매 정책 | `NearestEnemyBot`, `CheapestFirstBuyer`(둘 다 결정적) |
+
+**내보내기 도구(W4-2a)가 지킬 것**
+
+- `HeadlessBattle`과 `CheapestFirstBuyer`로 빈 진행도부터 [판 → 결산 → 구매]를 돈다. 끝나는 조건은 다음과 같다.
+  1. 마지막 이정표에 닿았다(`cleared`): 클리어 뒤 판을 **3판 더** 돌린다(C40). 마지막 이정표 이후의 서버 분기(목표 Level 0, 다음 이정표 없음, 결산 금액이 `earnedGold`)가 골든 로그로 확인된다. 클리어 뒤 판은 결산까지만 하고 구매는 하지 않아도 된다.
+  2. 이정표에 닿지 못한 채 300판이 이어졌다(`stalled`). 지금 봇은 마지막 이정표에 닿지 못하고 Gold만 쌓이므로 이 규칙으로 끝난다.
+  3. 판 수 상한(`battleLimit`).
+  4. 다음 판 결산에서 Gold가 `long`을 넘을 것이다(`overflow`). `checked` 산술로 확인하고, 넘는 판은 로그에 넣지 않는다.
+  5. 다음 판이 안전 상한(판 시간 600초)까지 끝나지 않았다(`capped`). 끝나지 않은 판은 결산 로그를 만들 수 없으므로 로그에 넣지 않는다. 마지막 이정표 뒤처럼 시간 추가가 흐르는 시간보다 빠른 판에서 생길 수 있다.
+- 클리어하지 못한 콘텐츠에서는 마지막 이정표 이후의 분기가 골든 로그에 없다. 그 분기는 W1-6 단위 테스트가 맡는다(서버 테스트가 출력만 하고 실패하지는 않는다).
+- 같은 콘텐츠로 두 번 내보내면 파일이 바이트까지 같아야 한다.
+- 파일의 `contentVersion`은 클라이언트가 계산한 서버 콘텐츠 버전(`ServerContent.VersionOf`)이고, 기대값 표(1.7a)와 묶음(W0-1)의 값과 같아야 한다.
+- `checkpoints`와 `final`은 서버 계산이 아니라 **클라이언트가 실제로 진행한 값**이다.
+
+**통합 메뉴 `Export All Server Fixtures`**(C42): 콘텐츠 묶음(W0-1), 기대값 표(W4-1a), 캠페인 로그(W4-2a)를 같은 콘텐츠로 순서대로 한 번에 내보내고, 세 파일의 `contentVersion`이 같은지 확인한다. 밸런스를 바꿀 때 일부만 다시 내보내 어긋나는 일을 막는다.
+
+**서버 테스트(W4-2b)가 지킬 것**
+
+- 파일의 `contentVersion`이 서버 목차의 값과 다르면 값을 비교하지 않고 "픽스처 재생성 필요"로 실패한다(1.7a와 같은 메시지).
+- 최소 커버리지: `reachedGrowthStage ≥ 1`이어야 한다(이정표를 하나도 지나지 않은 빈 캠페인이 통과하지 못하게). 출력에는 덮은 성장도 범위와 마지막 이정표 이후 분기를 덮었는지(`cleared`)를 남긴다.
+- **골든 통과**: 같은 골든 로그를 **두 가지 방식**으로 각각 새 계정에 보낸다. (1) **20개씩 끊어서 자주** 보낸다(오프라인과 온라인이 자주 바뀌어 조금씩 보내는 경우, 어긋난 위치도 좁게 잡힌다). (2) **요청 한도(로그 500개, 본문 1MB)까지 채워서** 보낸다(오프라인으로 쌓인 로그를 한꺼번에 보내는 경우). (2)는 클라이언트(`SyncSender`)가 나누는 규칙(앞에서부터 한도를 넘지 않을 때까지 채운다)과 같고, 한도만큼 채운 요청이 하나는 있어야 한다(없으면 로그가 커져 본문 한도에 먼저 닿았다는 뜻이라 테스트의 의도를 다시 정한다). 두 방식 모두 응답마다 `rejected`가 없고 `appliedThroughSeq`가 보낸 마지막 seq이며, 그 시점의 `checkpoints`(Gold, 성장도)와 같아야 한다. 끝에서 서버 진행도가 `final`과 완전히 같고(노드는 순서 포함), 의심 표시가 0이어야 한다. 어긋나면 새 계정에서 로그를 하나씩 보내 **처음 어긋나는 seq**를 찾아 알린다(진단 경로). 같은 seq를 다시 보내면(재전송) 아무것도 바뀌지 않는다. 조작 테스트의 접두 구간은 요청 수를 줄이려고 100개씩 보낸다(검증 대상이 아니다).
+- **조작 테스트**: 아래 표. 위치는 seq가 아니라 **역할**로 고르고(선택기), 조작 값은 서버 콘텐츠로 계산한다. 접두 구간(seq 1 ~ k−1)을 새 계정에 보낸 뒤 조작 로그를 k번으로 보낸다. 거부 조작의 기대는 모두 같다.
+  - `rejected.seq == k`, `rejected.code`가 표의 값, `appliedThroughSeq == k − 1`.
+  - 진행도가 k − 1 시점의 `checkpoints`와 같다(거부는 아무것도 바꾸지 않는다).
+  - 같은 요청에서 조작 로그 뒤에 원래 k + 1번 로그를 함께 보내도 **반영되지 않는다**(거부 뒤에 멈춘다).
+  - 거부는 상태를 바꾸지 않으므로, 같은 접두 위에서 여러 조작을 연달아 시도해도 된다(접두 재생 횟수를 줄인다). 거부하지 않는 조작(10, 20, 24)은 새 계정에서 한다.
+- **적용 가능성 가드**: 콘텐츠 때문에 조작 조건을 만족하는 로그나 노드가 없으면 그 케이스를 건너뛰지 않고 **실패**시킨다. "표의 모든 조작이 적용되었는가"를 확인하는 테스트가 있다(기본 21건 + 클리어한 파일 2건 + 한계 고정 1건). 커버리지가 말없이 줄어드는 것을 막는다. 실패하면 선택 조건을 고친다.
+
+**선택기**: 조작할 로그를 역할로 고른다.
+
+| 역할 | 조건 |
+|---|---|
+| 초반 | 처음 나오는 `SETTLEMENT` |
+| 이정표 | `reachedMilestone == true`인 첫 `SETTLEMENT` |
+| 중반 | `SETTLEMENT`을 순서대로 센 목록의 가운데 번째(`floor(n / 2)`, 0부터). 클리어한 파일에서는 클리어 뒤 판을 센 목록에서 뺀다 |
+| 후반 | 마지막 `SETTLEMENT`(클리어한 파일에서는 클리어 뒤 판을 뺀 마지막) |
+| 황금 | `kills`에 `golden: true`가 있는 `SETTLEMENT` 중 중반에 가장 가까운 것 |
+| 구매 | 중반 결산에 가장 가까운 `NODE_PURCHASE`(`cost`가 1 이상인 것). 조작이 그 시점의 진행도에 조건을 두면(13, 14, 15) **조건을 만족하는 구매 중** 가장 가까운 것을 쓴다. "후반의 구매"(15)는 후반 결산보다 앞에서 조건을 만족하는 마지막 구매 |
+| 마지막 단계(클리어 파일만) | 클리어 뒤 판의 첫 `SETTLEMENT` |
+
+**조작표**: 기대 코드는 3.4의 검사 순서와 3.6의 코드 순서를 따른 **처음 걸리는 코드**다. 위치가 "3곳"이면 초반·중반·후반에서 각각 한다.
+
+| # | 조작 | 위치 | 기대 |
+|---|---|---|---|
+| 1 | `earnedGold` +1 (kills와 `settledGold`는 그대로) | 3곳 | `SETTLEMENT_GOLD_MISMATCH` (S6) |
+| 2 | `settledGold`만 +1 | 이정표, 중반 | `SETTLEMENT_RESULT_MISMATCH` (S9) |
+| 3 | `exp` +1 | 3곳 | `SETTLEMENT_EXP_MISMATCH` (S3) |
+| 4 | 이정표 결산은 `reachedMilestone`을 `false`로, 중반 결산은 `reachedMilestone`을 `true`로, 또 다른 중반 결산은 `reachedLevel` +1 | 이정표, 중반 | `SETTLEMENT_EXP_MISMATCH` (S4) |
+| 5 | `kills`에 불가능한 항목 하나를 **더한다**: (a) `size = maxSize + 1`, (b) 없는 `enemyId`(`no-such-enemy`), (c) `goldenPossible`이 `false`인 종류의 `golden: true`, (d) `tierPossible`이 `false`인 색 등급. (c)와 (d)는 그런 종류·색이 서버 콘텐츠에 있을 때만 적용한다(없으면 (a), (b)만. 가드는 (a)와 (b)가 적용되는지 본다) | 중반 | `SETTLEMENT_INVALID_KILLS` (S2) |
+| 6 | `goldenCritCount`를 (황금 처치 수 합 + 1)로 | 황금 | `SETTLEMENT_GOLD_MISMATCH` (S5) |
+| 7 | `timeBonusCount`를 (시간 추가가 가능한 종류의 처치 수 합 + 1)로 | 중반 | `SETTLEMENT_TIME_EXCEEDED` (S7) |
+| 8 | `playedSeconds`를 (S8 상한 + 1초)로 | 중반 | `SETTLEMENT_TIME_EXCEEDED` (S8) |
+| 9 | `runId`를 다른 값으로, 또는 같은 결산을 새 seq로 한 번 더 보냄 | 3곳 | `RUN_NOT_OPEN` (S1) |
+| 10 | 판의 `RUN_START`와 `SETTLEMENT` 사이에 **유효한** 구매를 끼움. 골든 로그의 구매 정책은 살 수 있는 노드를 모두 사므로 판 시작 때는 살 수 있는 노드가 없다. 그래서 새 구매를 만들지 않고 **판 시작 바로 앞의 구매 하나를 판 시작 뒤로 옮긴다**(RUN_START, 구매, SETTLEMENT 순서, 뒤 로그의 seq는 그대로 이어 붙인다). 옮긴 구매는 그대로 유효하고, 판 시작의 `startGold`가 서버 값과 달라 의심 표시만 남는다 | 중반 결산에 가장 가까운 판 중 판 시작 바로 앞에 구매가 있는 판(캠페인 후반에는 살 노드가 남지 않아 구매가 없을 수 있다) | 판 시작과 구매는 통과하고, 이어지는 `SETTLEMENT`가 `RUN_NOT_OPEN`(C31). 거부하지 않는 조작이므로 새 계정에서 한다 |
+| 11 | `cost` −1 (Gold는 충분) | 구매 | `COST_MISMATCH` |
+| 12 | `rank` +1 | 구매 | `RANK_MISMATCH` |
+| 13 | 그 시점에 드러나지 않은 노드로 바꿈(`rank` 1) | 구매 | `NODE_HIDDEN` |
+| 14 | 그 시점에 드러났지만 다음 Rank 비용이 Gold보다 큰 노드로 바꿈(`rank`, `cost`는 서버 값) | 구매 | `NOT_ENOUGH_GOLD` |
+| 15 | 그 시점에 이미 최대 Rank인 노드로 바꿈 | 후반의 구매 | `MAX_RANK_REACHED` |
+| 16 | 없는 `nodeId`(`no-such-node`) | 구매 | `UNKNOWN_NODE` |
+| 17 | 로그 하나를 빼고 그 다음 로그를 보냄 | 중반 | 다음 로그가 `SEQ_GAP`. `appliedThroughSeq`는 뺀 로그의 앞 |
+| 18 | 같은 요청 안에서 인접한 두 로그의 순서를 바꿈 | 중반 | HTTP 400 `INVALID_REQUEST`. 거부 코드가 아니며 아무것도 적용하지 않는다(진행도 불변) |
+| 19 | `contentVersion`을 다른 값으로 | 중반의 결산, 구매 | `CONTENT_VERSION_MISMATCH` |
+| 20 | `RUN_START`의 `startLevel`을 +1, `timeLimitSeconds`를 다르게, `startSupply`의 한 `count`를 +1 | 중반 | **거부하지 않는다.** 의심 표시가 남고, 이어지는 정상 결산은 통과하며 `checkpoints`와 같은 상태로 계속된다. 새 계정에서 한다 |
+| 21 | 이미 쓴 `runId`로 `RUN_START` | 중반 | `DUPLICATE_RUN_ID` |
+| 22 | (클리어 파일만) 마지막 이정표에 닿은 뒤의 결산에서 `settledGold`를 `earnedGold`와 다르게 | 마지막 단계 | `SETTLEMENT_RESULT_MISMATCH` (S9) |
+| 23 | (클리어 파일만) 같은 결산에서 `reachedMilestone`을 `true`로 | 마지막 단계 | `SETTLEMENT_EXP_MISMATCH` (S4) |
+| 24 | **한계 고정**: 장부를 일관되게 부풀린다. 처치 하나를 더 센 것으로 하고(`kills`의 황금이 아닌 항목 하나의 `count`를 1 올린다), `exp`와 `earnedGold`와 `settledGold`를 그 항목의 `expOf`, `goldOf`만큼 더한다. 레벨, 이정표, 시간 추가가 바뀌지 않는 결산을 고른다(이정표가 아닌 결산 중 `levelForExp(exp + Δ)`가 `reachedLevel`과 같은 것) | 중반에 가장 가까운 그런 결산 | **통과해야 한다.** 서버가 판 내용을 재현하지 못하고 통계 검사(S10)가 없어 이런 조작은 막지 못한다(계획서 10장). 이 동작을 고정해 두고, S10을 넣을 때 이 케이스가 의도된 변경으로 바뀌는지 확인한다. 반영된 뒤 서버 Gold가 `checkpoints`의 해당 값 + Δ인지만 본다(그 뒤 로그는 보내지 않는다). 새 계정에서 한다 |
+
+- 조작의 값은 접두 구간을 보낸 뒤 서버에서 `GET /me/progress`로 읽은 산 노드와 성장도로 `ContentBattleRules.upgradesFor`, `setupFor`를 계산해 정한다(예: 5의 `maxSize + 1`, 7의 상한, 8의 S8 상한, 13~15의 노드). 계산에 쓰는 규칙은 서버 코드 그대로이므로, 규칙에 버그가 있어도 이 테스트는 같은 값을 쓴다. 규칙 자체의 정확성은 1.7a가 확인한다.
+- 5, 6, 7, 8의 조작은 다른 필드를 건드리지 않는다. 앞선 검사(S1~S5)가 통과해야 뒤의 검사에 닿으므로, 한 조작이 하나의 검사만 겨냥하게 값을 고른다.
+
 ### 3.9 결정 사항 (3장, 확정)
 
 | # | 결정 | 이유 |
@@ -772,6 +1087,12 @@ API 명세의 형식 그대로다. `progress`는 `GET /me/progress`와 같은 �
 | C14 | 한도: 요청당 500개, 1 MB. 클라이언트가 나눠 보낸다 | 오프라인으로 쌓인 로그도 몇 번의 요청으로 보낸다 |
 | C15 | 정의되지 않은 필드는 무시한다 | 필드를 더할 때 옛 서버가 거부하지 않는다 |
 | C16 | `contentVersion`이 서버와 다르면 `CONTENT_VERSION_MISMATCH`로 거부한다. 클라이언트는 그 실행을 오프라인(`ContentOutdated`)으로 바꾼다 | 계획서 D3. 최근 몇 버전의 규칙을 보관해 하위 호환을 허용하는 것은 후속 과제(W5-3) |
+| C37 | 골든 캠페인 파일은 `logs`, 로그마다의 `checkpoints`, 최종 `final`, `campaign`(범위), `margins`(S8 여유)를 함께 담는다 | 어긋남이 처음 생기는 seq를 바로 찾고, 서버 최종 상태를 클라이언트의 실제 진행과 완전히 비교한다. S8 허용 오차의 실측값도 같은 파일에서 얻는다 |
+| C38 | 골든 로그는 `runId`, 시각, 빌드 버전, 시드를 고정해 같은 콘텐츠면 같은 바이트로 내보낸다 | 내보낼 때마다 파일이 바뀌면 diff로 콘텐츠 변화의 영향을 볼 수 없다. `SyncLogFactory`가 `runId`와 시계를 바깥에서 받으므로 코드 변경 없이 된다 |
+| C39 | W4-2b 테스트는 콘텐츠 값(노드 id, 종류 id, 숫자, seq, 성장도 수)을 코드에 쓰지 않는다. 조작 위치는 역할 선택기로, 조작 값은 서버 콘텐츠로 계산한다. 적용할 수 없는 케이스는 건너뛰지 않고 실패시킨다 | 밸런스가 바뀌어도(마지막 이정표까지 닿게 되어도) 픽스처만 다시 내보내면 테스트가 통과해야 한다. 조용히 줄어드는 커버리지를 막는다 |
+| C40 | 마지막 이정표에 닿는 콘텐츠면 클리어 뒤 판을 3판 더 돌려 골든에 넣는다. 닿지 못하면 그 분기는 W1-6 단위 테스트가 맡는다 | 마지막 이정표 이후 분기(목표 Level 0, 다음 이정표 없음)가 밸런스가 바뀌는 즉시 골든으로 확인된다. 판 수를 3으로 제한해 클리어 뒤 Gold가 `long` 한도에 가까워지는 것을 막는다 |
+| C41 | 서버가 막지 못하는 조작(장부를 일관되게 부풀림)을 "통과해야 하는 조작"으로 고정하는 테스트를 둔다(24번) | 알려진 한계(계획서 10장)를 코드로 남기고, 통계 검사(S10)를 넣을 때 변경이 의도된 것인지 알게 한다 |
+| C42 | 콘텐츠 묶음, 기대값 표, 캠페인 로그를 한 번에 내보내는 통합 메뉴를 둔다. 서버 로더는 골든 파일의 `.json`과 `.json.gz`를 모두 읽는다 | 밸런스를 바꿀 때 일부만 다시 내보내 `contentVersion`이 어긋나는 일을 막는다. 파일이 커져도 확장자만 바꾸면 되어 테스트 구조가 그대로다 |
 
 ---
 
@@ -848,7 +1169,7 @@ CREATE TABLE sync_log (
 );
 ```
 
-- `revision` 열은 옛 저장 API를 없앨 때(W1-7) 함께 지운다(V4, A가 작성).
+- `revision` 열은 옛 저장 API를 없앨 때(W1-7) 함께 지웠다(`V4__drop_progress_revision.sql`, A가 작성).
 - `battle_run`은 계정 안에서 `run_id`가 유일하다. 다른 계정과 겹쳐도 상관없다.
 - `NOT_PROCESSED`는 거부된 로그 뒤에 있어 처리하지 않은 로그다.
 
@@ -951,7 +1272,7 @@ public enum SuspicionReason {
 | C18 | 처리기는 `SyncContext`로만 진행도를 읽고 바꾸며, 거부할 때는 바꾸지 않는다 | 처리기가 저장소와 트랜잭션을 몰라도 된다. 한 로그 안에서 일부만 반영되는 일이 없다 |
 | C19 | 요청 하나가 트랜잭션 하나. 거부는 커밋, 예상하지 못한 예외는 전체 롤백(500) | 거부 직전까지는 반영하고, 버그로 진행도가 어긋나는 일은 없게 한다 |
 | C20 | `battle_run`의 시작 Gold·성장도는 서버 진행도 값으로 적는다 | 결산 검증의 기준은 서버 값이다 |
-| C21 | `revision` 열은 W1-7(옛 API 제거) 때 지운다 | 옛 API와 그 테스트가 W1-7 전까지 그대로 돌게 한다 |
+| C21 | `revision` 열은 W1-7(옛 API 제거) 때 지운다(**완료**, V4) | 옛 API와 그 테스트가 W1-7 전까지 그대로 돌게 한다 |
 | C22 | `timeLimitSeconds` 비교 허용 오차 0.001초 | 같은 float 계산이면 같은 값이 나오므로 작게 둔다 |
 | C31 | `NODE_PURCHASE`가 열린 판이 있을 때 오면, 구매 처리기가 구매를 적용하면서 그 판을 **포기로 닫는다**(보상 없음, 구매가 거부되면 닫지 않는다). `RESET`·`RUN_START`와 같은 규칙이다 | 결산 검증(S2~S9)은 결산 시점의 노드 랭크로 판 설정을 계산한다. 판 도중 구매가 끼면 더 강해진 노드 기준으로 검증이 느슨해지는데, 구매가 판을 닫으면 그 판의 결산은 `RUN_NOT_OPEN`이라 이 경로가 막힌다. 거부와 달리 정상 플레이어의 구매가 사라지지 않는다. 정상 클라이언트는 결산 로그가 구매 로그보다 먼저 만들어지므로 영향이 없다 |
 
@@ -960,7 +1281,7 @@ public enum SuspicionReason {
 - 위치: `sync/controller/SyncController`, `sync/service/`(`SyncRequestReader` 요청 전체 400·413, `LogParser` 로그 형식, `SyncService` 엔진, `JpaSyncContext`, `LogHandlerRegistry`), `sync/dto/`
 - 요청 본문은 글자로 받아 직접 읽는다. 로그 하나의 형식 오류를 요청 전체의 400이 아니라 그 로그의 `MALFORMED_LOG`로 처리하기 위해서다.
 - 서버 콘텐츠 버전은 `ServerContentVersion` 빈이 준다. 시작할 때 검증한 묶음 목차의 `contentVersion`(`ContentManifest`, W0-3)이다(`sync/config/SyncConfig`).
-- 진행도가 바뀌면 옛 저장 API와 섞이지 않도록 `revision`도 오른다(W1-7에서 제거).
+- 옛 저장 API와 `revision`은 W1-7에서 제거했다(V4). 진행도 변경은 `lastAppliedSeq`로만 추적한다.
 - 새 게임은 산 노드 행을 하나씩 지운다. 벌크 삭제가 영속성 컨텍스트를 비워 잠근 진행도 엔티티까지 떼어 내기 때문이다.
 - 테스트(`SyncApiTests`, 19개)는 빈으로 등록하지 않은 테스트용 처리기로 엔진의 몫만 본다(실제 처리기가 생겨도 겹치지 않는다).
 
@@ -1009,11 +1330,12 @@ public enum SuspicionReason {
 
 | 어셈블리 | Unity 의존 | 내용 | 담당 |
 |---|---|---|---|
-| `BlackHole.Net` (2장) | 없음 | 동기화 DTO(5.4), `SyncJson`(5.5), `ISyncApi`, `ISyncStore`, `PendingLog` 등(5.6) | A(타입), C(`ISyncApi` 구현) |
+| `BlackHole.Net` (2장) | 없음 | 동기화 DTO(5.4), `SyncJson`(5.5), `ISyncApi`, `ISyncStore`, `PendingLog` 등(5.6). `SyncApi`(`ISyncApi` 구현), `SyncSender`(5.8) | A(타입), C(`SyncApi`, `SyncSender`) |
 | `BlackHole.Sync` (신규) | 없음 | `SyncLogFactory`: 코어 객체(진행도, 판, 결산 결과)로 로그 JSON을 만든다. `SyncLedger`: 로그 장부와 응답 반영 규칙(5.7). `ServerProgress`: 서버 진행도 비교·변환. `BlackHole.Core.*`와 `BlackHole.Net`을 참조 | A |
 | `BlackHole.Save` (신규) | 있음 | `ProgressStore`(`ISyncStore` 구현, 진행 저장과 함께), `ProgressSaveFile`. 원래 Assembly-CSharp에 있던 `Save/`를 분리했다 | A |
-| Assembly-CSharp | 있음 | `SyncSender`, 연결 코드, 알림 UI | C |
+| Assembly-CSharp | 있음 | 연결 코드(`GameBootstrap`), 알림 UI | C |
 
+- `SyncSender`는 처음에 Assembly-CSharp에 두기로 했으나, Unity에 의존하지 않고 Editor 테스트가 가짜 `ISyncApi`로 전송 규칙을 직접 검증하도록 `BlackHole.Net`에 두었다(W3-4).
 - `SyncLogFactory`를 Unity 밖에 두는 이유: Editor 테스트 어셈블리가 직접 참조해 검증하고(샘플과 글자 단위 비교), 에디터 도구(W4-2a)가 캠페인 전체 로그를 만들 때 같은 코드를 쓰기 위해서다. 에디터 도구의 `IJsonSerializer`는 `UnityJsonSerializer`다. (원래는 net8.0 시뮬레이션 도구도 쓰도록 이렇게 나눴으나, 그 도구는 2026-10-14 `dev`에서 삭제되었다.)
 
 ### 5.3 코어에 더할 것
@@ -1154,7 +1476,7 @@ public enum SyncCallOutcome
 {
     Response,        // 200, 응답 본문을 읽었다
     Unreachable,     // 네트워크 오류, 타임아웃, 5xx → 이번 실행은 오프라인(Unreachable)
-    Unauthorized,    // 갱신 후에도 401 → 오프라인(IAuthSession이 이미 바꿈)
+    Unauthorized,    // 401 → 갱신 실패(IAuthSession이 이미 오프라인) 또는 갱신 후에도 401(오프라인 ProtocolError)
     ProtocolError,   // 400, 413, 형식이 맞지 않는 200 → 오프라인(ProtocolError), 오류 로그
 }
 ```
@@ -1183,6 +1505,13 @@ public enum SyncCallOutcome
 - **나눠 보내기**(3.5): 한 요청에 최대 500개, 본문 1 MB(`SyncJson.Utf8Length`) 이하. 앞 요청의 응답을 반영한 뒤 다음 요청을 보낸다. 거부가 나오면 멈춘다(남은 로그는 `ApplyResponse`가 이미 지웠다).
 - **실패**: `Unreachable`, `Unauthorized`, `ProtocolError`면 로그를 그대로 두고 이번 실행은 더 보내지 않는다(계획서 D9). 오프라인 사유는 `IAuthSession.GoOffline`으로 알린다.
 - **`CONTENT_VERSION_MISMATCH`**: 지금은 다른 거부와 똑같이 처리한다(3.6, `ContentOutdated` 전환은 추후).
+- **구현 메모(W3-4, 2026-10-16)**:
+  - `GoOffline`은 `SyncSender`만 부른다. `SyncApi`는 결과(`SyncCallOutcome`)만 돌려주고 실패 원인(상태 코드, 오류 코드)을 로그로 남긴다.
+  - 오프라인 사유: `Unreachable` → `Unreachable`, 그 밖(`Unauthorized`, `ProtocolError`) → `ProtocolError`. 갱신에 실패한 `Unauthorized`는 `IAuthSession`이 이미 오프라인이고 처음 사유를 유지하므로 실제로 바뀌는 것은 "갱신한 뒤에도 401"인 경우뿐이다. `OfflineReason`에 값을 더하지 않는다(2.4).
+  - 동기화 요청 타임아웃과 시작 대기 시간은 모두 `ServerSettings.SyncTimeoutSeconds`(10초, C11)다.
+  - 응답의 `appliedThroughSeq`가 보낸 마지막 seq보다 커도 실패로 보지 않는다(로컬 장부가 서버보다 뒤처진 경우, 5.7의 다음 seq 규칙이 맞춘다). 거부 없이 반영했는데 보낸 첫 로그가 그대로 남으면 같은 요청을 되풀이하지 않도록 `ProtocolError`로 멈춘다.
+  - 로그 하나가 1 MB를 넘으면 보낼 수 없으므로 `ProtocolError`다(결산 로그는 칸 2000개 상한에서도 1 MB에 크게 못 미친다).
+  - 거부를 반영하면 `RejectionReceived` 이벤트를 올린다(W3-5가 구독할 수 있다). 거부 기록 자체는 `ISyncStore.LastRejection`에 있다.
 
 ### 5.9 거부 알림 (W3-5)
 
@@ -1243,7 +1572,8 @@ public enum SyncCallOutcome
 |---|---|---|
 | 동기화 DTO(5.4), `LogTypes`·`RejectCodes`·`SyncLimits` | `Assets/Scripts/Net/SyncDtos.cs`, `SyncCodes.cs` | 완료 |
 | `SyncJson`(5.5) | `Assets/Scripts/Net/SyncJson.cs` | **구현 완료** |
-| `PendingLog`, `ISyncStore`, `SyncApplyOutcome`, `ISyncApi`, `SyncCallResult`(5.6) | `Assets/Scripts/Net/` | 완료(구현 없음) |
+| `PendingLog`, `ISyncStore`, `SyncApplyOutcome`, `ISyncApi`, `SyncCallResult`(5.6) | `Assets/Scripts/Net/` | 완료 |
+| `SyncApi`(`ISyncApi` 구현), `SyncSender`(5.8), `GameBootstrap` 연결 | `Assets/Scripts/Net/SyncApi.cs`, `SyncSender.cs`, `Battle/GameBootstrap.cs` | **완료**(W3-4, 클라이언트 `feat/asyncServer`) |
 | `KillBucket`, `KillBucketCount`(5.3) | `Assets/Scripts/Core/Enemies/KillBucket.cs` | 타입 완료. 세는 일과 `BattleRawData` 속성은 W3-1(**완료**, PR #88. 검증은 `Editor/SyncFixtures/KillLedgerCheck`) |
 | `RunStartInfo`(5.3) | `Assets/Scripts/Core/Battle/Session/RunStartInfo.cs` | **완료**. `GameSession.StartInfo`를 연결했다(W3-2) |
 | `BlackHole.Sync` 어셈블리, `SyncLogFactory` | `Assets/Scripts/Sync/` | **완료**. 4종 로그(구매, 새 게임, 판 시작, 결산)를 만들고 `ScreenFlow`의 4지점에서 남긴다(W3-2). 결산의 칸별 값은 W3-1이 채운다(완료) |
@@ -1253,5 +1583,7 @@ public enum SyncCallOutcome
 | 테스트 | `Assets/Tests/Net/SyncJsonTests.cs`(9개) | 통과. 구매·새 게임 로그가 샘플과 글자까지 같고, 응답 샘플을 DTO로 읽는다 |
 | 테스트 | `Assets/Tests/Net/SyncLogFactoryTests.cs`(5개) | 작성. 판 시작·결산 로그가 샘플과 같고, 공급·칸별 값이 순서대로 실린다 |
 | 테스트 | `Assets/Tests/Save/SyncLedgerTests.cs`(12개), `ProgressStoreTests.cs`(19개) | 작성. 5.7 규칙, 포맷 1 로드, 쓰기 실패, 깨진 `Sync`, 거부·덮어쓰기, 타이틀 응답 |
+| 테스트 | `Assets/Tests/Net/SyncSenderTests.cs`(27개), `SyncApiTests.cs`(17개), `SyncSenderStoreTests.cs`(3개) | 통과(W3-4). 가짜 `ISyncApi`·실제 장부로 5.8 규칙 전체, 가짜 전송으로 요청 모양·401 재시도·응답별 결과, 실제 `ProgressStore`와 저장·다음 실행 연결 |
+| 테스트 | `Assets/Tests/Net/SyncLocalServerTests.cs`(1개, Explicit) | 로컬 서버로 통과(W3-4, M1 시나리오) |
 
 - 응답의 산 노드 DTO 이름은 `ProgressNodeDto`다(통계 전송의 `BlackHole.Analytics.NodeRankDto`와 겹치지 않게).

@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * 산 노드 하나: 노드 ID와 산 Rank. 저장 요청과 진행 상태 응답이 같은 형식을 쓴다.
+ * 산 노드 하나: 노드 ID와 산 Rank. 진행 상태 응답(GET /me/progress, 동기화 응답)이 쓴다.
  */
 public record NodeRankDto(
         @NotBlank @Size(max = 64) String nodeId,

@@ -1,5 +1,6 @@
 package org.example.feedablackhole.progress;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -7,9 +8,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
-import java.util.Arrays;
-import java.util.stream.Collectors;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import org.example.feedablackhole.TestcontainersConfiguration;
+import org.example.feedablackhole.progress.repository.PlayerProgressRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,13 +21,15 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
- * 진행 상태 불러오기·저장·초기화 API를 실제 MySQL까지 포함해 끝에서 끝까지 확인한다.
- * 테스트마다 트랜잭션이 롤백되어 서로 영향을 주지 않는다.
+ * 진행 상태 불러오기 API(GET /me/progress)를 실제 MySQL까지 포함해 확인한다.
+ * 진행 상태는 동기화 API(POST /me/sync)로만 바뀌고, 옛 저장(PUT)·초기화(POST reset) API는 없어졌다(W1-7).
+ * 테스트마다 트랜잭션이 롤백되어 서로 영향을 주지 않는다. 스프링 테스트는 샘플 콘텐츠 묶음 위에서 돈다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -33,212 +38,81 @@ import org.springframework.transaction.annotation.Transactional;
 class ProgressApiTests {
 
     private static final String PROGRESS = "/api/v1/me/progress";
-    private static final String RESET = "/api/v1/me/progress/reset";
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Autowired
     private MockMvc mockMvc;
 
-    // ---------- 불러오기 ----------
+    @Autowired
+    private PlayerProgressRepository progressRepository;
 
+    // 새 계정은 처음 상태다: Gold 0, 성장도 0, 산 노드 없음, 반영한 로그 없음(lastAppliedSeq 0)
     @Test
     void newAccountStartsFromTheInitialProgress() throws Exception {
         String token = newAccountToken();
 
         mockMvc.perform(get(PROGRESS).header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.revision").value(0))
+                .andExpect(jsonPath("$.lastAppliedSeq").value(0))
                 .andExpect(jsonPath("$.gold").value(0))
                 .andExpect(jsonPath("$.growthStage").value(0))
                 .andExpect(jsonPath("$.nodes").isEmpty())
-                .andExpect(jsonPath("$.updatedAt").isString());
+                .andExpect(jsonPath("$.updatedAt").isString())
+                .andExpect(jsonPath("$.revision").doesNotExist());
     }
 
+    // 토큰 없이는 불러올 수 없다
     @Test
-    void progressApisRequireAnAccessToken() throws Exception {
+    void progressRequiresAnAccessToken() throws Exception {
         mockMvc.perform(get(PROGRESS)).andExpect(status().isUnauthorized());
-        mockMvc.perform(put(PROGRESS).contentType(MediaType.APPLICATION_JSON).content(body(0, 0, 0)))
-                .andExpect(status().isUnauthorized());
-        mockMvc.perform(post(RESET)).andExpect(status().isUnauthorized());
     }
 
-    // ---------- 저장 ----------
-
+    // 옛 저장(PUT)·초기화(POST reset) API는 없다. 진행도는 동기화 API로만 바뀐다
     @Test
-    void saveReplacesTheProgressAndBumpsTheRevision() throws Exception {
+    void theOldSaveAndResetApisAreGone() throws Exception {
         String token = newAccountToken();
 
-        save(token, 0, 1_250_000L, 2, "timer-01:1", "timer-02:2")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.revision").value(1))
-                .andExpect(jsonPath("$.gold").value(1_250_000L))
-                .andExpect(jsonPath("$.growthStage").value(2))
-                .andExpect(jsonPath("$.nodes[0].nodeId").value("timer-01"))
-                .andExpect(jsonPath("$.nodes[1].rank").value(2));
-
-        // 다시 불러와도 같은 값이다.
-        mockMvc.perform(get(PROGRESS).header(HttpHeaders.AUTHORIZATION, bearer(token)))
-                .andExpect(jsonPath("$.revision").value(1))
-                .andExpect(jsonPath("$.gold").value(1_250_000L))
-                .andExpect(jsonPath("$.nodes.length()").value(2));
-    }
-
-    @Test
-    void goldMayDecreaseBecausePurchasesSpendIt() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 1000, 0).andExpect(status().isOk());
-
-        save(token, 1, 998, 0, "timer-01:1")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.gold").value(998));
-    }
-
-    @Test
-    void rankCanGoUpAndNewNodesAreAppendedInRequestOrder() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 0, 0, "timer-01:1").andExpect(status().isOk());
-
-        // 요청의 노드 순서가 달라도 이미 산 노드의 자리는 유지되고, 새 노드가 그 뒤에 요청 순서대로 붙는다.
-        save(token, 1, 0, 0, "timer-03:1", "timer-01:2", "timer-02:1")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.nodes[0].nodeId").value("timer-01"))
-                .andExpect(jsonPath("$.nodes[0].rank").value(2))
-                .andExpect(jsonPath("$.nodes[1].nodeId").value("timer-03"))
-                .andExpect(jsonPath("$.nodes[2].nodeId").value("timer-02"));
-    }
-
-    @Test
-    void saveWithAStaleRevisionIsRejectedAndChangesNothing() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 100, 1).andExpect(status().isOk());
-
-        // revision이 1인데 0을 기준으로 저장하려는 낡은 요청
-        save(token, 0, 999, 5, "timer-01:1")
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("STALE_PROGRESS"));
-
-        mockMvc.perform(get(PROGRESS).header(HttpHeaders.AUTHORIZATION, bearer(token)))
-                .andExpect(jsonPath("$.revision").value(1))
-                .andExpect(jsonPath("$.gold").value(100))
-                .andExpect(jsonPath("$.nodes").isEmpty());
-    }
-
-    @Test
-    void growthStageCannotDecrease() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 0, 3).andExpect(status().isOk());
-
-        save(token, 1, 0, 2)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("PROGRESS_REGRESSION"));
-    }
-
-    @Test
-    void boughtNodeCannotBeRemovedOrLowered() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 0, 0, "timer-01:2", "timer-02:1").andExpect(status().isOk());
-
-        save(token, 1, 0, 0, "timer-01:2")
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("PROGRESS_REGRESSION"));
-        save(token, 1, 0, 0, "timer-01:1", "timer-02:1")
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("PROGRESS_REGRESSION"));
-    }
-
-    @Test
-    void saveRejectsMalformedRequests() throws Exception {
-        String token = newAccountToken();
-
-        save(token, 0, -1, 0).andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
-        save(token, 0, 0, -1).andExpect(status().isBadRequest());
-        save(token, -1, 0, 0).andExpect(status().isBadRequest());
-        save(token, 0, 0, 0, "timer-01:0").andExpect(status().isBadRequest());
-        save(token, 0, 0, 0, " :1").andExpect(status().isBadRequest());
-        save(token, 0, 0, 0, "a".repeat(65) + ":1").andExpect(status().isBadRequest());
-        save(token, 0, 0, 0, "timer-01:1", "timer-01:2")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("INVALID_REQUEST"));
-        // 필드 누락
         mockMvc.perform(put(PROGRESS).header(HttpHeaders.AUTHORIZATION, bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"gold\":0}"))
-                .andExpect(status().isBadRequest());
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.error.code").value("METHOD_NOT_ALLOWED"));
+        mockMvc.perform(post(PROGRESS + "/reset").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
     }
 
+    // 각 계정은 자기 진행도만 본다
     @Test
-    void saveRejectsTooManyNodes() throws Exception {
-        String token = newAccountToken();
-        String[] nodes = new String[1001];
-        for (int i = 0; i < nodes.length; i++) {
-            nodes[i] = "node-" + i + ":1";
-        }
-
-        save(token, 0, 0, 0, nodes).andExpect(status().isBadRequest());
-    }
-
-    // ---------- 계정 분리 ----------
-
-    @Test
-    void eachAccountOnlySeesAndChangesItsOwnProgress() throws Exception {
+    void eachAccountOnlySeesItsOwnProgress() throws Exception {
         String first = newAccountToken();
         String second = newAccountToken();
-        save(first, 0, 777, 1, "timer-01:1").andExpect(status().isOk());
+        setGold(first, 777);
 
         mockMvc.perform(get(PROGRESS).header(HttpHeaders.AUTHORIZATION, bearer(second)))
-                .andExpect(jsonPath("$.revision").value(0))
                 .andExpect(jsonPath("$.gold").value(0))
                 .andExpect(jsonPath("$.nodes").isEmpty());
-        // 두 번째 계정의 저장이 첫 번째 계정의 revision과 무관하게 자기 기준으로 처리된다.
-        save(second, 0, 5, 0).andExpect(status().isOk()).andExpect(jsonPath("$.revision").value(1));
         mockMvc.perform(get(PROGRESS).header(HttpHeaders.AUTHORIZATION, bearer(first)))
                 .andExpect(jsonPath("$.gold").value(777));
     }
 
-    // ---------- 초기화(새 게임) ----------
-
+    // 동기화로 반영한 로그의 seq가 lastAppliedSeq로 나오고, 동기화 응답의 progress와 같은 값이다
     @Test
-    void resetReturnsTheProgressToTheStartAndBumpsTheRevision() throws Exception {
+    void progressMatchesWhatTheSyncApplied() throws Exception {
         String token = newAccountToken();
-        save(token, 0, 5000, 2, "timer-01:1", "timer-02:1").andExpect(status().isOk());
 
-        mockMvc.perform(post(RESET).header(HttpHeaders.AUTHORIZATION, bearer(token)))
+        String synced = mockMvc.perform(post("/api/v1/me/sync")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(resetRequest(1)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.revision").value(2))
-                .andExpect(jsonPath("$.gold").value(0))
-                .andExpect(jsonPath("$.growthStage").value(0))
-                .andExpect(jsonPath("$.nodes").isEmpty());
-
-        mockMvc.perform(get(PROGRESS).header(HttpHeaders.AUTHORIZATION, bearer(token)))
-                .andExpect(jsonPath("$.revision").value(2))
-                .andExpect(jsonPath("$.gold").value(0))
-                .andExpect(jsonPath("$.nodes").isEmpty());
-    }
-
-    @Test
-    void saveBasedOnTheRevisionBeforeResetIsRejected() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 5000, 2).andExpect(status().isOk());
-        mockMvc.perform(post(RESET).header(HttpHeaders.AUTHORIZATION, bearer(token)))
-                .andExpect(status().isOk());
-
-        // 초기화 전에 받아 둔 진행 상태(revision 1)를 기준으로 한 저장이 초기화를 되돌리지 못한다.
-        save(token, 1, 5000, 2)
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("STALE_PROGRESS"));
-    }
-
-    @Test
-    void progressCanGrowAgainFromTheStartAfterReset() throws Exception {
-        String token = newAccountToken();
-        save(token, 0, 0, 3, "timer-01:1").andExpect(status().isOk());
-        mockMvc.perform(post(RESET).header(HttpHeaders.AUTHORIZATION, bearer(token)))
-                .andExpect(status().isOk());
-
-        // 초기화로 성장도와 노드가 없어졌으므로 낮은 값으로 새로 저장할 수 있다.
-        save(token, 2, 10, 1, "timer-02:1")
+                .andExpect(jsonPath("$.appliedThroughSeq").value(1))
+                .andReturn().getResponse().getContentAsString();
+        String loaded = mockMvc.perform(get(PROGRESS).header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.growthStage").value(1))
-                .andExpect(jsonPath("$.nodes.length()").value(1));
+                .andExpect(jsonPath("$.lastAppliedSeq").value(1))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(JsonPath.<Object>read(loaded, "$")).isEqualTo(JsonPath.<Object>read(synced, "$.progress"));
     }
 
     // ---------- 도우미 ----------
@@ -257,25 +131,28 @@ class ProgressApiTests {
         return JsonPath.read(tokens, "$.accessToken");
     }
 
-    // nodes: "노드ID:Rank" 형식
-    private ResultActions save(String token, long baseRevision, long gold, int growthStage, String... nodes)
-            throws Exception {
-        MockHttpServletRequestBuilder request = put(PROGRESS)
-                .header(HttpHeaders.AUTHORIZATION, bearer(token))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body(baseRevision, gold, growthStage, nodes));
-        return mockMvc.perform(request);
+    // 토큰의 계정 진행도의 Gold를 바꾼다. 같은 트랜잭션의 엔티티를 바꿔야 GET이 그 값을 본다
+    private void setGold(String token, long gold) throws Exception {
+        String me = mockMvc.perform(get("/api/v1/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andReturn().getResponse().getContentAsString();
+        long accountId = ((Number) JsonPath.read(me, "$.accountId")).longValue();
+        progressRepository.findById(accountId).orElseThrow().changeGold(gold);
     }
 
-    private static String body(long baseRevision, long gold, int growthStage, String... nodes) {
-        String nodesJson = Arrays.stream(nodes)
-                .map(node -> {
-                    int colon = node.lastIndexOf(':');
-                    return "{\"nodeId\":\"%s\",\"rank\":%s}".formatted(node.substring(0, colon), node.substring(colon + 1));
-                })
-                .collect(Collectors.joining(",", "[", "]"));
-        return "{\"baseRevision\":%d,\"gold\":%d,\"growthStage\":%d,\"nodes\":%s}"
-                .formatted(baseRevision, gold, growthStage, nodesJson);
+    // 샘플 RESET 로그(log-reset.json)의 seq만 바꾼 동기화 요청 본문
+    private static String resetRequest(long seq) throws IOException {
+        ObjectNode log = (ObjectNode) JSON.readTree(sample("log-reset.json"));
+        log.put("seq", seq);
+        ArrayNode logs = JSON.createArrayNode();
+        logs.add(log);
+        return JSON.createObjectNode().set("logs", logs).toString();
+    }
+
+    private static String sample(String name) throws IOException {
+        try (InputStream in = ProgressApiTests.class.getResourceAsStream("/sync-samples/" + name)) {
+            assertThat(in).as(name).isNotNull();
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     private static String bearer(String accessToken) {
