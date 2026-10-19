@@ -4,7 +4,14 @@
 **A Game About Feeding A Black Hole**을 레퍼런스로 하는 인크리멘탈 게임을 개발합니다.
 클라이언트는 별도 Unity 저장소에서 개발합니다.
 
-현재 서버는 프로젝트 초기 골격과 협업 설정 단계입니다. 게임 API와 Unity 연동은 아직 구현되지 않았습니다.
+현재 서버에 구현된 것은 다음과 같습니다.
+
+- **인증**: 게스트 등록·로그인, 토큰 갱신·로그아웃, `GET /me`
+- **진행 데이터와 동기화**: `GET /me/progress`와 `POST /me/sync`. 클라이언트가 쌓은 로그(`NODE_PURCHASE`, `RESET`, `RUN_START`, `SETTLEMENT`)를 서버가 순서대로 검증하고 적용합니다.
+- **게임 콘텐츠와 규칙**: 클라이언트가 내보낸 노드·전투 콘텐츠를 시작할 때 읽어 검증하고, 클라이언트의 전투 규칙을 서버에 이식해 결산 값의 일관성을 확인합니다.
+- **배포와 운영**: 컨테이너 이미지, 헬스체크, AWS(EC2·RDS) 배포와 자동 배포(CD). 자세한 내용은 [배포와 운영](#배포와-운영)을 참고하세요.
+
+API 명세와 구현 현황, 아직 정해지지 않은 항목은 [docs/api-spec.md](docs/api-spec.md)에, 설계 배경은 [docs/server-sync-plan.md](docs/server-sync-plan.md)에 있습니다. Unity 클라이언트와의 연동은 클라이언트 저장소에서 진행하며, 이 저장소에서는 `FakeClient`로 명세대로 동작하는지 확인합니다([테스트 구성](#테스트-구성)).
 
 ## 개발 환경
 
@@ -64,15 +71,17 @@ bash ./gradlew --version
 
 ### 테스트 구성
 
-Unity 클라이언트 없이 서버만으로 검증합니다. 모든 테스트는 실제 MySQL 8.4 컨테이너에서 실행됩니다.
+Unity 클라이언트 없이 서버만으로 검증합니다. 스프링을 띄우거나 DB를 쓰는 테스트는 실제 MySQL 8.4 컨테이너(Testcontainers)에서 실행하고, 콘텐츠·규칙 같은 순수 로직 테스트는 DB 없이 실행합니다.
 
 | 종류 | 위치 | 확인하는 것 |
 | --- | --- | --- |
 | 스키마·매핑 | `*SchemaTests`, `AuditingTests` | Flyway 스키마와 엔티티·제약 조건의 일치 |
-| 단위 | `SecretCodecTests` | 비밀값 생성·해시 |
+| 단위(DB 없음) | `SecretCodecTests`, `content/`, `node/content/`, `battle/content/`, `battle/rules/`, `sync/handler/` | 비밀값 생성·해시, 콘텐츠 읽기·검증·버전 계산, 전투 규칙 계산(클라이언트가 내보낸 기대값 표와의 일치 포함), 로그 타입별 처리기(가짜 진행도). 서버가 실제로 쓰는 콘텐츠 묶음(`src/main/resources/content`)이 모든 검증을 통과하는지도 여기서 확인하므로, 콘텐츠를 고친 PR은 이 테스트로 걸러집니다 |
 | API(서버 내부 호출) | `*ApiTests` | 컨트롤러·보안·검증·서비스·DB를 `MockMvc`로. 테스트마다 롤백 |
+| 동기화 처리기(DB 포함) | `NodePurchaseSyncTests`, `RunStartSyncTests` | 실제 처리기를 동기화 엔진과 MySQL까지 붙여 진행도 저장, 판 기록, 의심 표시 후 계속 처리하는 흐름을 확인. 가짜 진행도로 규칙만 보는 `sync/handler/` 단위 테스트와 짝을 이룹니다 |
 | **클라이언트 흐름(실제 HTTP)** | `e2e/Stage1ClientFlowTests` | 서버를 실제 포트로 띄우고 `support/FakeClient`가 명세(`docs/api-spec.md`)대로 요청을 조립해 전송. 최초 실행, 재시작, 토큰 만료(시계를 앞당김), 기기 두 대, 오류 응답 형식, **실제 동시 요청**(토큰 갱신) |
 | **동기화 흐름(실제 HTTP)** | `e2e/SyncClientFlowTests` | 서버를 실제 포트로 띄우고 `FakeClient`가 샘플 로그(`support/SyncSamples`)를 JSON 글자 그대로 `POST /me/sync`에 보낸다. 순차 적용, 나눠 보내기, 재전송, 누락, 거부 후 멈춤, 의심 표시 후 계속, 중복 `runId`, **실제 동시 요청**(두 기기), 토큰 만료, 콘텐츠 버전 불일치, 빈 요청 |
+| **골든 캠페인(실제 HTTP)** | `e2e/GoldenCampaignTests` | 클라이언트가 실제로 판을 돌려 만든 골든 캠페인 로그 전체를 실제 서버(HTTP, DB, 실제 콘텐츠 묶음)에 넣는다. 서버가 계산한 진행도가 로그마다의 체크포인트와 최종 진행도에서 클라이언트와 같아야 하고, 조작한 로그는 정해진 `seq`와 코드에서 멈춰야 한다. 테스트가 콘텐츠 값을 코드에 쓰지 않아서, 밸런스가 바뀌어도 클라이언트에서 픽스처를 다시 내보내기만 하면 코드 수정 없이 통과해야 한다 |
 
 - `FakeClient`는 명세의 클라이언트 처리 흐름을 구현한 기준 구현입니다. 서버의 DTO를 쓰지 않고 JSON 문자열을 직접 조립하므로, 서버와 명세가 함께 틀어지는 일을 잡습니다.
 - 새 API를 만들면 FakeClient로 시나리오를 추가하고(인증·진행도 조회는 `Stage1ClientFlowTests`, 동기화는 `SyncClientFlowTests`), 명세를 먼저 고친 뒤 구현합니다.
@@ -114,7 +123,7 @@ docker run --rm -p 8080:8080 \
 - 컬럼 길이, `NOT NULL`, 외래키는 검증되지 않습니다. SQL을 바꾸면 엔티티도 직접 같이 고쳐 주세요.
 - 테스트도 같은 마이그레이션을 적용한 MySQL 컨테이너에서 실행됩니다.
 
-## 환경 설정과 다음 단계
+## 환경 설정과 CI
 
 - 공통 설정 파일은 `src/main/resources/application.properties`입니다.
 - 인증 정보는 커밋하지 않습니다. `.env`와 `.env.*`는 제외하고 `.env.example`만 공유합니다.
