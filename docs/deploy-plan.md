@@ -73,7 +73,7 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 ### 2단계. AWS 인프라 수동 구축 (콘솔로 한 번 직접 만들어 본다)
 처음에는 콘솔로 손수 만들어 각 구성요소의 역할을 이해하고, 안정되면 IaC(Terraform 등)는 선택 과제로 둔다.
 진행 기록(2026-10-15, 모두 서울 리전). 리소스 이름은 `blackhole-` 접두사를 쓴다.
-이 저장소는 공개라서 **계정 ID, 엔드포인트, IP, 리소스 ID는 이 문서에 적지 않고** `<…>` 자리표시자로 쓴다(실제 값은 AWS 콘솔의 해당 리소스 화면에서 확인한다).
+이 저장소는 공개라서 **계정 ID, 엔드포인트, IP, 리소스 ID는 이 문서에 적지 않고** `<…>` 자리표시자로 쓴다(실제 값은 AWS 콘솔의 해당 리소스 화면에서 확인한다). 이 기준은 `scripts/check-identifiers.sh`(CI의 Identifier check)가 자동으로 검사한다.
 - [x] 네트워크: 서울 리전에는 기본 VPC가 없어 **VPC를 새로 만들었다**(`blackhole-vpc`, 10.0.0.0/16, 2개 AZ, 퍼블릭 2 + 프라이빗 2, 인터넷 게이트웨이, S3 게이트웨이 엔드포인트, **NAT 없음**). DB 서브넷 그룹 `blackhole-db-subnet-group`은 프라이빗 서브넷 2개(2a, 2b)로 만들었다. EC2는 퍼블릭 서브넷(2a)에 둔다.
 - [x] 보안그룹: `blackhole-sg-app`(80/443 전체 허용, SSH 없음), `blackhole-sg-db`(3306은 `blackhole-sg-app`에서만 허용)
 - [x] RDS `blackhole-db`: MySQL 8.4.11, `db.t4g.micro`, 단일 AZ, 퍼블릭 액세스 끔, 암호화, 삭제 방지, 초기 DB `feedablackhole`, 마스터 사용자 `blackhole`. 엔드포인트 `<RDS 엔드포인트>`.
@@ -126,7 +126,7 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 ### 5단계. CI 확장 (PR 단계)
 - [ ] 새 워크플로 `ci.yml`: `./gradlew build`(테스트 포함) 실행. ubuntu 러너에는 Docker가 있어 Testcontainers가 그대로 동작한다.
 - [ ] Gradle 캐시 적용으로 시간 단축
-- [ ] GitHub 브랜치 보호: `main`에 Checkstyle·빌드 통과 필수, 리뷰 1명 이상(CONTRIBUTING에 이미 명시된 방침)
+- [ ] GitHub 브랜치 보호: `main`에 Checkstyle·빌드(Test)·식별 정보 검사(Identifier check) 통과 필수, 리뷰 1명 이상(CONTRIBUTING에 이미 명시된 방침). 새 검사는 워크플로가 한 번 실행된 뒤에야 필수 검사 목록에 나타난다.
 - 검증: 테스트가 깨지는 PR은 병합 버튼이 막힌다.
 
 ### 6단계. CD (main 병합 시 자동 배포)
