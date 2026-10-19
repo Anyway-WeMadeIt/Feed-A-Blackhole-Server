@@ -101,11 +101,16 @@ jobs:
           script_b64="$(base64 -w0 deploy/deploy.sh)"
           remote="f=\$(mktemp); echo $script_b64 | base64 -d > \$f; bash \$f $TAG; rc=\$?; rm -f \$f; exit \$rc"
 
-          command_id="$(jq -n --arg id "$INSTANCE_ID" --arg cmd "$remote" \
-            '{DocumentName:"AWS-RunShellScript", InstanceIds:[$id], TimeoutSeconds:60,
-              Comment:"deploy", Parameters:{commands:[$cmd], executionTimeout:["900"]}}' \
-            | aws ssm send-command --cli-input-json file:///dev/stdin \
-                --query 'Command.CommandId' --output text)"
+          # JSON을 파이프(--cli-input-json file:///dev/stdin)로 넘기면 AWS CLI가 빈 입력으로 받아
+          # "Invalid JSON received"로 실패한다(첫 배포 시도에서 확인). 그래서 파이프 없이 --parameters에 JSON 문자열로 직접 준다.
+          params="$(jq -cn --arg cmd "$remote" '{commands: [$cmd], executionTimeout: ["900"]}')"
+          command_id="$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --instance-ids "$INSTANCE_ID" \
+            --timeout-seconds 60 \
+            --comment deploy \
+            --parameters "$params" \
+            --query 'Command.CommandId' --output text)"
 
           status=Pending
           for _ in $(seq 1 120); do
