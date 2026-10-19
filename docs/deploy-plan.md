@@ -73,14 +73,15 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 ### 2단계. AWS 인프라 수동 구축 (콘솔로 한 번 직접 만들어 본다)
 처음에는 콘솔로 손수 만들어 각 구성요소의 역할을 이해하고, 안정되면 IaC(Terraform 등)는 선택 과제로 둔다.
 진행 기록(2026-10-15, 모두 서울 리전). 리소스 이름은 `blackhole-` 접두사를 쓴다.
+이 저장소는 공개라서 **계정 ID, 엔드포인트, IP, 리소스 ID는 이 문서에 적지 않고** `<…>` 자리표시자로 쓴다(실제 값은 AWS 콘솔의 해당 리소스 화면에서 확인한다).
 - [x] 네트워크: 서울 리전에는 기본 VPC가 없어 **VPC를 새로 만들었다**(`blackhole-vpc`, 10.0.0.0/16, 2개 AZ, 퍼블릭 2 + 프라이빗 2, 인터넷 게이트웨이, S3 게이트웨이 엔드포인트, **NAT 없음**). DB 서브넷 그룹 `blackhole-db-subnet-group`은 프라이빗 서브넷 2개(2a, 2b)로 만들었다. EC2는 퍼블릭 서브넷(2a)에 둔다.
 - [x] 보안그룹: `blackhole-sg-app`(80/443 전체 허용, SSH 없음), `blackhole-sg-db`(3306은 `blackhole-sg-app`에서만 허용)
-- [x] RDS `blackhole-db`: MySQL 8.4.11, `db.t4g.micro`, 단일 AZ, 퍼블릭 액세스 끔, 암호화, 삭제 방지, 초기 DB `feedablackhole`, 마스터 사용자 `blackhole`. 엔드포인트 `blackhole-db.cpommuukazys.ap-northeast-2.rds.amazonaws.com`.
+- [x] RDS `blackhole-db`: MySQL 8.4.11, `db.t4g.micro`, 단일 AZ, 퍼블릭 액세스 끔, 암호화, 삭제 방지, 초기 DB `feedablackhole`, 마스터 사용자 `blackhole`. 엔드포인트 `<RDS 엔드포인트>`.
   - 무료 플랜 제한으로 **자동 백업 보존은 1일**(7일은 거부됨), 프리 티어 템플릿·단일 AZ로 고정된다. 기본 파라미터 그룹 `default.mysql8.4`가 문자셋 utf8mb4·시간대 UTC라 별도 파라미터 그룹은 만들지 않았다.
   - 마스터 계정은 관리용으로만 쓰고, **앱 전용 DB 계정을 따로 만든다**(아래 3단계 전 작업).
-- [x] ECR `feedablackhole-server`(태그 변경 불가, AES-256), 수명 주기 규칙 "이미지 10개 초과 시 오래된 것 만료". URI `098981324445.dkr.ecr.ap-northeast-2.amazonaws.com/feedablackhole-server`. 푸시 시 스캔은 리포지토리 설정이 사라지고 레지스트리 단위로 옮겨져 설정하지 않았다.
+- [x] ECR `feedablackhole-server`(태그 변경 불가, AES-256), 수명 주기 규칙 "이미지 10개 초과 시 오래된 것 만료". URI `<계정ID>.dkr.ecr.ap-northeast-2.amazonaws.com/feedablackhole-server`. 푸시 시 스캔은 리포지토리 설정이 사라지고 레지스트리 단위로 옮겨져 설정하지 않았다.
 - [x] IAM: 정책 `blackhole-read-parameters`(SSM 파라미터 읽기. 리소스는 `parameter/blackhole`와 `parameter/blackhole/*` 둘 다 필요하다. `get-parameters-by-path`는 경로 자체를 리소스로 검사하므로 `/*`만 허용하면 거부된다), 역할 `blackhole-ec2-role`(+ `AmazonSSMManagedInstanceCore`, `AmazonEC2ContainerRegistryReadOnly`)
-- [x] EC2 `blackhole-app`(`i-0e1c9ac4c5fd0af9f`): Amazon Linux 2023 x86_64, `t3.small`(크레딧 표준), `blackhole-sg-app`, 20GiB gp3 암호화, 키 페어 없음(SSM으로만 접속), IMDSv2 필수, 종료 방지, 사용자 데이터로 Docker 설치·로그 10MB×3 제한. 탄력적 IP `54.116.29.217` 연결.
+- [x] EC2 `blackhole-app`(`<인스턴스 ID>`): Amazon Linux 2023 x86_64, `t3.small`(크레딧 표준), `blackhole-sg-app`, 20GiB gp3 암호화, 키 페어 없음(SSM으로만 접속), IMDSv2 필수, 종료 방지, 사용자 데이터로 Docker 설치·로그 10MB×3 제한. 탄력적 IP `<탄력적 IP>` 연결.
 - [x] Parameter Store(SecureString, 키 `alias/aws/ssm`) `/blackhole/DB_URL`(`...:3306/feedablackhole?sslMode=REQUIRED`), `/blackhole/DB_USERNAME`(`blackhole_app`), `/blackhole/DB_PASSWORD`, `/blackhole/JWT_SECRET`. 비밀값 두 개는 직접 입력했고 비밀번호 관리자에도 저장했다.
 - [x] 앱 전용 DB 계정 `blackhole_app`@`10.0.%`: `feedablackhole` 스키마에 SELECT/INSERT/UPDATE/DELETE/CREATE/ALTER/DROP/INDEX/REFERENCES만 부여했다(Flyway가 DDL을 실행하므로 DDL 권한 포함, 서버 전체 권한 없음). 마스터 계정은 관리용으로만 쓴다. 비밀번호는 `/blackhole/DB_PASSWORD`와 동일한 값이며 SQL에는 터미널이 Parameter Store에서 읽어 넣었다.
 - 2단계 진행 중 확인한 사항: EC2에서 ECR 로그인 성공, 인스턴스 역할 인식, SSM 관리 대상 등록 확인. 내 PC에서 RDS 3306과 EC2의 22·8080·3306에 접속되지 않음을 확인했다.
@@ -114,7 +115,7 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 
 ### 4단계. 도메인과 HTTPS
 도메인은 두 단계로 간다. 먼저 **임시 무료 도메인**(예: DuckDNS)으로 HTTPS까지 동작을 검증하고, 팀원과 논의해 **정식 도메인을 구매하면 교체**한다. 교체가 쉽도록 서버 주소를 코드에 고정하지 않는다(클라이언트의 서버 주소는 설정값으로 둔다).
-- [ ] (임시) 무료 서브도메인을 발급받아 A 레코드를 EC2 탄력적 IP(`54.116.29.217`)로 연결. 계정 가입·로그인은 직접 한다.
+- [ ] (임시) 무료 서브도메인을 발급받아 A 레코드를 EC2 탄력적 IP(`<탄력적 IP>`)로 연결. 계정 가입·로그인은 직접 한다.
 - [ ] Nginx 설치, 443 → 8080 프록시(`server_name`에 도메인 지정). 앱 포트 8080은 외부에 열지 않는다(`127.0.0.1`에만 바인딩, 3단계에서 적용 완료). 프록시가 `Host`, `X-Forwarded-For`, `X-Forwarded-Proto`를 넘겨야 앱의 `forward-headers-strategy=framework`가 동작한다.
 - [ ] certbot으로 인증서 발급·자동 갱신. Amazon Linux 2023 저장소에 certbot이 있어 `dnf install -y nginx certbot python3-certbot-nginx`로 설치하고(`certbot plugins`로 nginx 플러그인 확인), 갱신은 `certbot-renew.timer`를 켜서 처리한다. 순서: ① `--dry-run`(스테이징에서 시뮬레이션, 발급 한도를 쓰지 않음)으로 DNS·80 포트·설정 검증 → ② 실제 발급 → ③ `certbot renew --dry-run`으로 갱신 경로 검증.
   - 위험: Let's Encrypt는 "등록 도메인당 발급 횟수" 한도가 있는데, 공용 무료 도메인(`duckdns.org`)이 공개 접미사 목록(PSL)에 있는지 확인하지 못했다. 목록에 없으면 같은 도메인을 쓰는 다른 사용자와 한도를 나눠 발급이 거부될 수 있다. 그래서 반드시 `--dry-run`을 먼저 하고, 거부되면 정식 도메인 구매를 앞당긴다.
