@@ -219,6 +219,121 @@ aws rds describe-db-snapshots --region ap-northeast-2 --db-snapshot-identifier <
 
    삭제 뒤 `describe-db-snapshots`에 `rds:<새 이름>-…` 자동 스냅샷이 남아 보일 수 있다. 자동 스냅샷은 직접 지울 수 없고 보관 기간이 지나면 사라진다.
 
+### 데이터 초기화와 DB 관리
+
+**무엇이 DB에 있고 무엇이 없는가.** DB에는 **플레이어 데이터만** 있다(계정, 로그인 정보, 진행도, 산 노드와 Rank, 판 기록, 동기화 로그). 노드·전투 같은 **콘텐츠 밸런스 값은 DB가 아니라 이미지 안**(`src/main/resources/content/`)에 있고, 반영은 배포로 한다. 그래서 초기화는 콘텐츠를 되돌리지 않는다. 밸런스를 바꾸면 이미 산 노드의 Rank가 새 기준과 안 맞을 수 있어서, 테스트 단계에서는 데이터를 비우고 다시 시작하는 것이 가장 단순하다.
+
+SQL은 로컬 MySQL 8.4에 마이그레이션(V1~V4)을 적용하고 시험 데이터를 넣어 확인했다(외래 키 순서, 한 계정 삭제, 전체 삭제, ID 초기화, 스키마 재생성 뒤 앱 계정 권한 유지). **서버(RDS)에서 실행한 것은 아니므로 처음 쓸 때 결과로 이 절을 고친다(`미검증`).**
+
+공통 준비: 위 "접속"처럼 서버에서 **마스터 계정**으로 접속한다(아래 명령의 `<RDS 엔드포인트>`). 마스터는 비밀번호를 화면에 남기지 않고 받는다.
+
+```bash
+sudo -iu ec2-user
+read -rsp "RDS master password: " MYSQL_PWD; echo; export MYSQL_PWD
+```
+
+끝나면 반드시 `unset MYSQL_PWD`를 한다.
+
+#### 지금 어떤 데이터가 있는지 보기
+
+```bash
+docker run --rm -i -e MYSQL_PWD mysql:8.4 mysql -h <RDS 엔드포인트> -u blackhole feedablackhole <<'SQL'
+SELECT (SELECT COUNT(*) FROM account) accounts, (SELECT COUNT(*) FROM auth_identity) identities,
+       (SELECT COUNT(*) FROM refresh_token) tokens, (SELECT COUNT(*) FROM player_progress) progress,
+       (SELECT COUNT(*) FROM player_node_rank) node_ranks, (SELECT COUNT(*) FROM battle_run) runs,
+       (SELECT COUNT(*) FROM sync_log) sync_logs;
+SELECT id, created_at, last_login_at FROM account ORDER BY id DESC LIMIT 10;
+SQL
+```
+
+#### 테스트 계정 전체 초기화 (스키마 유지)
+
+밸런스를 바꿨거나 시험 데이터를 정리할 때 쓴다. **모든 계정과 진행 데이터가 사라진다.** 테이블 구조와 Flyway 이력(`flyway_schema_history`)은 그대로라서 재배포나 재시작이 필요 없다.
+
+1. 되돌릴 수 있게 **수동 스냅샷**을 만든다(위 "수동 스냅샷"). 끝나기를 기다린다.
+2. (권장) 쓰는 중에 새 데이터가 들어오지 않도록 앱을 잠시 멈춘다: `docker stop blackhole`. 몇 초면 끝나지만 그동안 서비스가 끊긴다.
+3. 삭제한다. 한 트랜잭션이라 중간에 실패하면 아무것도 지워지지 않는다. 외래 키 때문에 **자식 테이블부터** 지운다.
+
+   ```bash
+   docker run --rm -i -e MYSQL_PWD mysql:8.4 mysql -h <RDS 엔드포인트> -u blackhole feedablackhole <<'SQL'
+   START TRANSACTION;
+   DELETE FROM sync_log;
+   DELETE FROM player_node_rank;
+   DELETE FROM player_progress;
+   DELETE FROM battle_run;
+   DELETE FROM refresh_token;
+   DELETE FROM auth_identity;
+   DELETE FROM account;
+   COMMIT;
+   ALTER TABLE sync_log AUTO_INCREMENT = 1;
+   ALTER TABLE player_node_rank AUTO_INCREMENT = 1;
+   ALTER TABLE battle_run AUTO_INCREMENT = 1;
+   ALTER TABLE refresh_token AUTO_INCREMENT = 1;
+   ALTER TABLE auth_identity AUTO_INCREMENT = 1;
+   ALTER TABLE account AUTO_INCREMENT = 1;
+   SELECT (SELECT COUNT(*) FROM account) accounts, (SELECT COUNT(*) FROM flyway_schema_history) migrations;
+   SQL
+   ```
+
+   `accounts`가 0이고 `migrations`가 4(적용된 마이그레이션 수)면 된다. 마지막 `ALTER`는 ID를 1부터 다시 시작하게 할 뿐이라 빼도 된다.
+4. 앱을 다시 켠다: `docker start blackhole` 후 1장의 상태 확인 명령으로 `UP`을 본다.
+5. `unset MYSQL_PWD`.
+
+**초기화 뒤 영향**: 단말기에 저장된 게스트 정보와 리프레시 토큰은 서버에 없는 값이 된다. 클라이언트가 "서버가 모르는 게스트"를 만나면 **다시 등록(`guest/register`)하도록 처리하는지 확인해야 한다**(클라이언트 쪽은 확인하지 못했다). 처리하지 않으면 테스트 기기에서 앱 데이터를 지워야 한다. 액세스 토큰은 최대 15분 동안 남아 있지만 계정이 없어 요청이 실패한다.
+
+#### 계정 하나만 지우기
+
+특정 테스트 계정만 정리할 때(`<계정 ID>`는 위 조회에서 확인).
+
+```bash
+docker run --rm -i -e MYSQL_PWD mysql:8.4 mysql -h <RDS 엔드포인트> -u blackhole feedablackhole <<'SQL'
+SET @id = <계정 ID>;
+START TRANSACTION;
+DELETE FROM sync_log         WHERE account_id = @id;
+DELETE FROM player_node_rank WHERE account_id = @id;
+DELETE FROM player_progress  WHERE account_id = @id;
+DELETE FROM battle_run       WHERE account_id = @id;
+DELETE FROM refresh_token    WHERE account_id = @id;
+DELETE FROM auth_identity    WHERE account_id = @id;
+DELETE FROM account          WHERE id = @id;
+COMMIT;
+SQL
+```
+
+앱을 멈출 필요는 없다. 실제 사용자가 생긴 뒤에는 **전체 초기화를 하지 않고** 이 방식으로 계정 단위로만 지우며, 지우기 전에 스냅샷을 만든다.
+
+#### 스키마까지 초기화 (테이블을 모두 다시 만들 때)
+
+마이그레이션 파일을 **이미 운영에 적용된 뒤에 고쳐야 할 때**(출시 전에만) 쓴다. 적용된 마이그레이션은 체크섬이 기록돼 있어서 파일을 고치면 Flyway가 앱 시작을 거부한다. 데이터뿐 아니라 **모든 테이블과 Flyway 이력이 사라지고**, 다음 시작 때 Flyway가 V1부터 다시 만든다.
+
+1. 수동 스냅샷을 만든다. 현재 DB의 문자셋을 기록해 둔다(재생성 때 같은 값으로 만든다).
+
+   ```bash
+   docker run --rm -i -e MYSQL_PWD mysql:8.4 mysql -h <RDS 엔드포인트> -u blackhole -e "SELECT default_character_set_name, default_collation_name FROM information_schema.schemata WHERE schema_name='feedablackhole'"
+   ```
+2. 앱을 멈춘다: `docker stop blackhole`.
+3. 스키마를 지우고 다시 만든다. 앱 계정의 스키마 권한은 `DROP DATABASE` 뒤에도 남는다(로컬에서 확인).
+
+   ```bash
+   docker run --rm -i -e MYSQL_PWD mysql:8.4 mysql -h <RDS 엔드포인트> -u blackhole <<'SQL'
+   DROP DATABASE feedablackhole;
+   CREATE DATABASE feedablackhole;
+   SQL
+   ```
+
+   1에서 본 값이 기본값(`utf8mb4`, `utf8mb4_0900_ai_ci`)과 다르면 `CREATE DATABASE`에 `CHARACTER SET`과 `COLLATE`를 같은 값으로 붙인다.
+4. **같은 태그로 앱을 다시 시작**해 Flyway가 테이블을 만들게 한다. 4장의 "수동 배포·롤백"의 `deploy.sh <현재 태그>`를 쓴다(현재 태그는 `sudo cat /var/lib/blackhole/last-good-tag`). 헬스체크가 `UP`이면 끝이다.
+5. 확인: `SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank;`가 V1부터 모두 `success=1`인지 본다. `unset MYSQL_PWD`.
+
+#### DB를 다룰 때의 규칙
+
+- **스키마는 Flyway 마이그레이션으로만 바꾼다.** 서버에서 손으로 `ALTER TABLE`을 하지 않는다. 앱이 시작할 때 JPA가 엔티티와 스키마를 대조(`validate`)해서, 어긋나면 서버가 뜨지 않는다.
+- **운영에 적용된 마이그레이션 파일은 고치지 않는다.** 바꿀 내용은 새 번호의 마이그레이션(`V5__...`)으로 추가한다. 출시 전에 정말 고쳐야 하면 위 "스키마까지 초기화"를 쓴다.
+- Flyway의 `clean`(스키마 전체 삭제 명령)은 꺼진 기본값을 유지한다. 앱 설정에서 켜지 않는다.
+- 운영 데이터를 직접 바꾸는 모든 작업 전에는 스냅샷을 만든다. 작업 후에는 `unset MYSQL_PWD`와 세션 종료까지 한다.
+- 앱 계정(`blackhole_app`)으로는 조회와 단발 수정을, 마스터 계정(`blackhole`)으로는 초기화처럼 구조·권한에 닿는 작업만 한다.
+- 출시 뒤 `sync_log`(받은 로그 원문)가 계속 쌓여 용량이 늘면 오래된 행을 지울 수 있다. 어디서도 이 테이블을 참조하지 않아 안전하다(아직 실행해 보지 않았다): `DELETE FROM sync_log WHERE received_at < UTC_TIMESTAMP(6) - INTERVAL 90 DAY;` 저장공간 알람(`blackhole-rds-free-storage-low`)이 울리면 먼저 용량을 본다.
+
 ## 7. 비밀값 교체
 
 모든 비밀값은 Parameter Store `/blackhole/`에 있다. **값을 채팅·이슈·PR·로그에 붙이지 않는다.** 값을 바꾼 뒤에는 컨테이너가 새 값을 읽도록 **같은 태그로 `deploy.sh`를 다시 실행**한다(4장의 수동 절차). 컨테이너는 시작할 때만 환경변수를 읽는다.
