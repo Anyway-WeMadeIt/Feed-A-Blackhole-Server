@@ -140,8 +140,8 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 ### 5단계. CI 확장 (PR 단계)
 - [x] 빌드·테스트 CI는 팀이 이미 `.github/workflows/test.yml`(Tests, 잡 이름 `Test`)로 구현했다. `./gradlew test`를 PR과 `main` 푸시에서 실행하고, ubuntu 러너의 Docker로 Testcontainers가 동작한다. 별도 `ci.yml`은 만들지 않는다.
 - [x] Gradle 캐시는 `test.yml`의 `setup-java`(`cache: gradle`)로 이미 적용돼 있다.
-- [ ] GitHub 브랜치 보호: `main`에 Checkstyle·빌드(Test)·식별 정보 검사(Identifier check) 통과 필수, 리뷰 1명 이상(CONTRIBUTING에 이미 명시된 방침). 새 검사는 워크플로가 한 번 실행된 뒤에야 필수 검사 목록에 나타난다.
-- 검증: 테스트가 깨지는 PR은 병합 버튼이 막힌다.
+- [x] GitHub 브랜치 보호: `main`에 Checkstyle·빌드(Test)·식별 정보 검사(Identifier check) 통과 필수, 리뷰 1명 이상(CONTRIBUTING에 이미 명시된 방침). 새 검사는 워크플로가 한 번 실행된 뒤에야 필수 검사 목록에 나타난다.
+- [x] 검증: `main` 대상 PR에서 일부러 실패시킨 테스트와 가짜 식별 정보가 각각 `Test`, `Identifier check` 실패로 표시되고 병합 버튼이 막히는 것을 확인했다(검증용 브랜치와 PR은 병합하지 않고 닫는다).
 
 ### 6단계. CD (main 병합 시 자동 배포)
 - [ ] AWS에 GitHub OIDC 공급자와 배포용 IAM 역할 생성(저장소·브랜치로 신뢰 범위 제한, 권한은 최소)
