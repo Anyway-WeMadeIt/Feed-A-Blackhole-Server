@@ -17,7 +17,7 @@ CI는 두 워크플로로 나뉘며, GitHub에 푸시하면 PR과 `main` 푸시�
 | Code style | `.github/workflows/code-style.yml` | **Checkstyle** | Java 컨벤션 검사 |
 | Tests | `.github/workflows/test.yml` | **Test** | `./gradlew test` 전체 테스트(Testcontainers MySQL, E2E 포함). 실패하면 리포트를 `test-reports` 아티팩트로 올립니다 |
 
-브랜치 보호와 필수 리뷰는 별도 설정이 필요합니다. 최초 실행 후 GitHub의 `main` 보호 규칙에서 **Checkstyle**과 **Test** 검사를 필수로 지정하고 승인 1명 이상을 요구하면, 검사 실패나 리뷰 누락 시 병합을 차단할 수 있습니다. 이 저장소 변경만으로 원격 보호 규칙이 활성화되지는 않으므로 팀이 GitHub에서 직접 설정해야 합니다.
+브랜치 보호와 필수 리뷰는 별도 설정이 필요합니다. 최초 실행 후 GitHub의 `main` 보호 규칙에서 **Checkstyle**, **Test**, **Identifier check** 검사를 필수로 지정하고 승인 1명 이상을 요구하면, 검사 실패나 리뷰 누락 시 병합을 차단할 수 있습니다. 이 저장소 변경만으로 원격 보호 규칙이 활성화되지는 않으므로 팀이 GitHub에서 직접 설정해야 합니다.
 
 ## 커밋
 
@@ -93,7 +93,7 @@ Windows에서는 아래 명령을 실행합니다. macOS/Linux에서는 `bash ./
 - IntelliJ에서 Checkstyle 연동 플러그인을 사용하는 경우 동일한 XML과 도구 버전을 지정합니다. IDE 플러그인 없이도 Gradle 검사는 동작하며, CI 결과를 공통 기준으로 삼습니다.
 - 검사기는 코드를 자동 수정하지 않습니다. 포맷은 Reformat Code, import는 Optimize Imports, 이름은 IDE Rename 리팩터링으로 수정합니다.
 
-코드 스타일은 Code style 워크플로가, 전체 빌드와 DB 테스트는 Tests 워크플로가 검사합니다. 로컬 Git 훅과 별도 빌드 포매터는 추가하지 않았습니다.
+코드 스타일은 Code style 워크플로가, 전체 빌드와 DB 테스트는 Tests 워크플로가, 인프라 식별 정보는 Identifier check 워크플로가 검사합니다([인프라 식별 정보](#인프라-식별-정보) 참고). 로컬 Git 훅과 별도 빌드 포매터는 추가하지 않았습니다.
 
 ## Spring Boot·Gradle과 Git
 
@@ -106,6 +106,32 @@ Windows에서는 아래 명령을 실행합니다. macOS/Linux에서는 `bash ./
 - Spring Boot는 `.env`를 기본으로 로드하지 않습니다. 환경변수 주입 방법과 DB 설정은 실행 환경 구성 단계에서 문서화합니다.
 - `.gitattributes`로 텍스트는 LF, Windows 배치 파일은 CRLF를 사용합니다. 서버에는 Git LFS나 Unity 병합 드라이버를 설정하지 않습니다.
 
+## 인프라 식별 정보
+
+이 저장소는 **공개**입니다. 배포 환경의 식별 정보를 문서·설정·코드·커밋 메시지·PR 설명 어디에도 적지 않습니다.
+
+- 적지 않는 것: AWS 계정 ID, RDS·EC2·로드밸런서 엔드포인트, 리소스 ID(`i-…`, `sg-…`, `vpc-…`, `subnet-…` 등), 공인 IP, 액세스 키.
+- 대신 자리표시자를 씁니다.
+
+| 값 | 자리표시자 |
+| --- | --- |
+| AWS 계정 ID | `<계정ID>` (예: `<계정ID>.dkr.ecr.ap-northeast-2.amazonaws.com/…`) |
+| RDS 엔드포인트 | `<RDS 엔드포인트>` |
+| EC2 인스턴스 ID | `<인스턴스 ID>` |
+| 서버의 공인 IP | `<탄력적 IP>` |
+
+- 실제 값은 저장소 밖(AWS 콘솔, 비밀번호 관리자)에서 확인합니다. 비밀번호·토큰·키는 식별 정보보다 훨씬 위험하므로 어떤 경우에도 커밋하지 않습니다.
+- **Identifier check** 워크플로가 위 값들을 검사하고, 발견하면 검사가 실패합니다. 로그도 공개라서 발견한 값은 출력하지 않고 파일·줄 번호·규칙 이름만 알려 줍니다.
+- 로컬에서는 같은 스크립트를 직접 실행해 미리 확인할 수 있습니다. Git 훅은 쓰지 않습니다.
+
+```sh
+bash scripts/check-identifiers.sh            # 추적 중인 모든 파일
+bash scripts/check-identifiers.sh --staged   # 스테이징된 내용만
+```
+
+- 공개해도 되는 값(예: 문서 예시의 공개 DNS 주소)이거나 오탐이면 해당 줄에 `identifier-check: allow`를 적어 제외합니다. 규칙은 `scripts/check-identifiers.sh` 위쪽에 있고, 고칠 때는 `--self-test`로 규칙이 깨지지 않았는지 확인합니다.
+- 이미 올린 값은 지워도 Git 이력에 남습니다. 비밀번호·키라면 즉시 폐기하고 새로 발급받은 뒤 팀에 알리고, 단순 식별자라면 자리표시자로 바꾸는 것으로 충분합니다. 판단이 어려우면 PR에 상황을 적습니다.
+
 ## 제출 전 확인
 
 1. 코드 변경 시 Wrapper로 `build`를 실행해 컴파일·테스트를 확인합니다. 현재 DB 구성의 제한은 [README.md](README.md)를 참고합니다.
@@ -114,3 +140,4 @@ Windows에서는 아래 명령을 실행합니다. macOS/Linux에서는 `bash ./
 3. DB 변경은 기존 데이터 영향과 적용 순서를 확인합니다.
 4. `git diff --check`와 `git status --short`로 공백 오류와 불필요한 파일을 확인합니다.
 5. 문서·설정만 변경했다면 관련 규칙과 링크를 확인합니다. 검증하지 못한 항목은 PR에 이유를 명시합니다.
+6. 문서·설정·스크립트를 바꿨다면 `bash scripts/check-identifiers.sh`로 인프라 식별 정보가 없는지 확인합니다.

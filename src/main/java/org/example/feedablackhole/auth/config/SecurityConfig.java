@@ -12,6 +12,7 @@ import org.springframework.security.web.SecurityFilterChain;
 /**
  * API 접근 규칙. 토큰 없이 열려 있는 경로는 인증 API(/api/v1/auth/**)뿐이고, 나머지는 유효한 액세스 토큰이 있어야 한다.
  * 새로 토큰 없이 열어야 하는 경로(예: /system/status)가 생기면 여기에 추가한다.
+ * 헬스체크(/actuator/health)도 배포 확인용으로 열어 두며, 상세 정보는 application.properties에서 숨긴다.
  */
 @Configuration
 @EnableWebSecurity
@@ -26,7 +27,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         // /error: 서블릿 컨테이너가 오류를 이 경로로 넘길 때 인증 때문에 가려지지 않도록 연다.
-                        .requestMatchers("/api/v1/auth/**", "/error").permitAll()
+                        .requestMatchers("/api/v1/auth/**", "/error", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling.authenticationEntryPoint(entryPoint))
                 .oauth2ResourceServer(resourceServer -> resourceServer
