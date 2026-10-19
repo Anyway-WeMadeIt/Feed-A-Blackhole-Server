@@ -1,0 +1,126 @@
+# main에 병합되면 테스트 -> 이미지 빌드 -> ECR 푸시 -> EC2 배포(SSM) 순서로 자동 배포한다.
+# 배포 잡은 GitHub Environment "production"을 쓴다: main에서만 실행되고, 승인자가 승인해야 시작한다.
+# AWS 접속은 장기 키 없이 GitHub OIDC로 임시 자격 증명을 받아서 한다(역할의 신뢰 정책이 이 저장소의 production 환경으로 제한).
+#
+# 이 저장소와 Actions 로그는 공개다. 역할 ARN, 인스턴스 ID는 production 환경 시크릿에 두고(값이 로그에서 가려진다),
+# 계정 ID는 실행 중에 조회해서 마스킹한다. 로그에 값을 직접 찍는 명령(echo, set -x 등)을 추가하지 않는다.
+#
+# 필요한 환경 시크릿: AWS_ROLE_ARN(배포용 IAM 역할), EC2_INSTANCE_ID(배포 대상 인스턴스)
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # 같은 커밋을 다시 배포하거나 연습할 때 Actions 화면에서 직접 실행한다(main 브랜치에서만 승인 단계를 통과한다)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 배포는 한 번에 하나만 실행한다. 앞선 배포를 취소하지 않고 기다린다(배포 도중 취소하면 서버가 어중간한 상태가 될 수 있다).
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: feedablackhole-server
+
+jobs:
+  test:
+    name: Test before deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Run tests
+        run: bash ./gradlew --no-daemon test
+
+  deploy:
+    name: Build, push and deploy
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # 이 환경의 승인 규칙과 브랜치 제한이 적용된다. OIDC 토큰의 sub도 이 환경 이름으로 만들어진다.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write    # OIDC 토큰 발급에 필요
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+
+      # 도커와 SSM 출력에 계정 ID가 섞여 나올 수 있어서(이미지 주소) 로그에서 가린다.
+      - name: Mask account ID
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::$account_id"
+          echo "REGISTRY=${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com" >> "$GITHUB_ENV"
+
+      - name: Set image tag
+        run: echo "TAG=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+
+      # ECR 태그는 변경 불가라서, 같은 커밋을 다시 배포할 때는 이미 올라간 이미지를 그대로 쓴다.
+      - name: Check whether the image already exists
+        run: |
+          if aws ecr describe-images --repository-name "$ECR_REPOSITORY" --image-ids imageTag="$TAG" >/dev/null 2>&1; then
+            echo "IMAGE_EXISTS=true" >> "$GITHUB_ENV"
+            echo "이미지 $TAG 는 이미 ECR에 있어서 빌드와 푸시를 건너뜁니다."
+          else
+            echo "IMAGE_EXISTS=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Log in to ECR
+        if: env.IMAGE_EXISTS == 'false'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # --provenance=false: ECR에 어테스테이션 항목이 별개 이미지처럼 섞이는 것을 막는다(수동 배포와 동일)
+      - name: Build and push image
+        if: env.IMAGE_EXISTS == 'false'
+        run: |
+          docker build --platform linux/amd64 --provenance=false -t "$REGISTRY/$ECR_REPOSITORY:$TAG" .
+          docker push "$REGISTRY/$ECR_REPOSITORY:$TAG"
+
+      # EC2에는 deploy.sh를 따로 두지 않고, 이 커밋의 스크립트 내용을 SSM으로 전달해 실행한다(저장소와 항상 일치).
+      # 종료 코드가 0이 아니면 이 잡이 실패한다. 롤백에 성공해도 이번 배포는 실패로 처리된다(deploy.sh 규칙).
+      - name: Deploy on EC2 via SSM
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          script_b64="$(base64 -w0 deploy/deploy.sh)"
+          remote="f=\$(mktemp); echo $script_b64 | base64 -d > \$f; bash \$f $TAG; rc=\$?; rm -f \$f; exit \$rc"
+
+          command_id="$(jq -n --arg id "$INSTANCE_ID" --arg cmd "$remote" \
+            '{DocumentName:"AWS-RunShellScript", InstanceIds:[$id], TimeoutSeconds:60,
+              Comment:"deploy", Parameters:{commands:[$cmd], executionTimeout:["900"]}}' \
+            | aws ssm send-command --cli-input-json file:///dev/stdin \
+                --query 'Command.CommandId' --output text)"
+
+          status=Pending
+          for _ in $(seq 1 120); do
+            sleep 5
+            status="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)"
+            case "$status" in
+              Pending|InProgress|Delayed) ;;
+              *) break ;;
+            esac
+          done
+
+          echo "SSM 상태: $status"
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+            --query StandardOutputContent --output text
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+            --query StandardErrorContent --output text
+          [[ $status == Success ]]
