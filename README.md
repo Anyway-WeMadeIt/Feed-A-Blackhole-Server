@@ -133,7 +133,7 @@ docker run --rm -p 8080:8080 \
 - 설정과 비밀값(`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`)은 이미지에 넣지 않고 Parameter Store(`/blackhole/*`)에서 읽어 실행할 때 환경변수로 주입합니다.
 - 이미지 교체와 롤백은 EC2에서 [`deploy/deploy.sh <태그>`](deploy/deploy.sh)로 합니다. 설정을 검증한 뒤 새 이미지를 받아 컨테이너를 교체하고, 헬스체크(`/actuator/health`)가 실패하면 직전 정상 태그로 되돌립니다.
 - HTTPS 프록시(Nginx) 설정과 인증서 발급·갱신 절차는 [deploy/nginx/README.md](deploy/nginx/README.md)에 있습니다.
-- 현재는 사람이 `deploy.sh`를 실행합니다. `main` 병합 시 자동 배포(CD)는 후속 단계입니다.
+- `main`에 병합되면 [`deploy.yml`](.github/workflows/deploy.yml) 워크플로가 테스트 → 이미지 빌드 → ECR 푸시 → SSM으로 `deploy.sh` 실행 순서로 자동 배포합니다(`production` 환경 승인 필요). 수동으로 교체하거나 롤백할 때는 EC2에서 `deploy.sh <태그>`를 실행합니다.
 - 전체 계획과 진행 상황은 [docs/deploy-plan.md](docs/deploy-plan.md)를 참고하세요.
 - 이 저장소는 공개라서 계정 ID, 엔드포인트, IP 같은 배포 환경의 식별 정보는 문서에 적지 않습니다([CONTRIBUTING.md](CONTRIBUTING.md)).
 
