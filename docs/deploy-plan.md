@@ -115,17 +115,31 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 
 ### 4단계. 도메인과 HTTPS
 도메인은 두 단계로 간다. 먼저 **임시 무료 도메인**(예: DuckDNS)으로 HTTPS까지 동작을 검증하고, 팀원과 논의해 **정식 도메인을 구매하면 교체**한다. 교체가 쉽도록 서버 주소를 코드에 고정하지 않는다(클라이언트의 서버 주소는 설정값으로 둔다).
-- [ ] (임시) 무료 서브도메인을 발급받아 A 레코드를 EC2 탄력적 IP(`<탄력적 IP>`)로 연결. 계정 가입·로그인은 직접 한다.
-- [ ] Nginx 설치, 443 → 8080 프록시(`server_name`에 도메인 지정). 앱 포트 8080은 외부에 열지 않는다(`127.0.0.1`에만 바인딩, 3단계에서 적용 완료). 프록시가 `Host`, `X-Forwarded-For`, `X-Forwarded-Proto`를 넘겨야 앱의 `forward-headers-strategy=framework`가 동작한다.
-- [ ] certbot으로 인증서 발급·자동 갱신. Amazon Linux 2023 저장소에 certbot이 있어 `dnf install -y nginx certbot python3-certbot-nginx`로 설치하고(`certbot plugins`로 nginx 플러그인 확인), 갱신은 `certbot-renew.timer`를 켜서 처리한다. 순서: ① `--dry-run`(스테이징에서 시뮬레이션, 발급 한도를 쓰지 않음)으로 DNS·80 포트·설정 검증 → ② 실제 발급 → ③ `certbot renew --dry-run`으로 갱신 경로 검증.
-  - 위험: Let's Encrypt는 "등록 도메인당 발급 횟수" 한도가 있는데, 공용 무료 도메인(`duckdns.org`)이 공개 접미사 목록(PSL)에 있는지 확인하지 못했다. 목록에 없으면 같은 도메인을 쓰는 다른 사용자와 한도를 나눠 발급이 거부될 수 있다. 그래서 반드시 `--dry-run`을 먼저 하고, 거부되면 정식 도메인 구매를 앞당긴다.
+진행 기록(2026-10-19). 도메인은 `<도메인>`으로 적는다.
+- [x] (임시) DuckDNS 서브도메인을 발급받아 A 레코드를 EC2 탄력적 IP(`<탄력적 IP>`)로 연결했다(`nslookup`으로 확인). 계정 가입·로그인은 직접 했다.
+- [x] Nginx 설치, 443 → 8080 프록시(`server_name`에 도메인 지정). 앱 포트 8080은 외부에 열지 않는다(`127.0.0.1`에만 바인딩, 3단계에서 적용 완료). 프록시가 `Host`, `X-Forwarded-For`, `X-Forwarded-Proto`를 넘겨야 앱의 `forward-headers-strategy=framework`가 동작한다.
+- [x] certbot으로 인증서 발급·자동 갱신. Amazon Linux 2023 저장소에 certbot이 있어 `dnf install -y nginx certbot python3-certbot-nginx`로 설치하고(`certbot plugins`로 nginx 플러그인 확인), 갱신은 `certbot-renew.timer`를 켜서 처리한다. 순서: ① `--dry-run`(스테이징에서 시뮬레이션, 발급 한도를 쓰지 않음)으로 DNS·80 포트·설정 검증 → ② 실제 발급 → ③ `certbot renew --dry-run`으로 갱신 경로 검증.
+  - 위험: Let's Encrypt는 "등록 도메인당 발급 횟수" 한도가 있는데, 공용 무료 도메인(`duckdns.org`)이 공개 접미사 목록(PSL)에 있는지 확인하지 못했다. 목록에 없으면 같은 도메인을 쓰는 다른 사용자와 한도를 나눠 발급이 거부될 수 있다. 그래서 반드시 `--dry-run`을 먼저 하고, 거부되면 정식 도메인 구매를 앞당긴다. 이번에는 거부 없이 발급됐다.
+  - 이메일 없이 발급했다(`--register-unsafely-without-email`). Let's Encrypt가 2025-06-04에 만료 알림 메일 발송을 종료해서 이메일은 선택 사항이다. 대신 **갱신이 실패해도 알림이 오지 않으므로** `sudo certbot certificates`로 만료일을 직접 확인한다(7단계에서 알람 추가). 갱신은 HTTP-01 방식이라 **보안그룹의 80 포트와 Nginx의 HTTP 서버 블록을 닫지 않는다.**
+  - 인증서 유효 기간: 2026-10-18 발급, 2027-01-16 만료(90일). 갱신은 만료 30일 전부터 타이머가 시도한다.
 - [ ] (정식) 도메인 구매 후 같은 탄력적 IP로 A 레코드 연결 → Nginx `server_name`과 인증서에 새 도메인 추가 → 클라이언트 서버 주소 변경·배포. **전환 기간에는 두 도메인을 함께 서비스**하고, 구 클라이언트가 사라지면 임시 도메인을 제거한다.
-- 검증: 내 PC에서 `curl https://도메인/actuator/health`가 성공한다. 클라이언트 접속 주소를 이 도메인으로 바꿔 게스트 로그인이 동작한다.
+- [x] 검증: 내 PC에서 `curl https://<도메인>/actuator/health`가 성공하고, 클라이언트 접속 주소를 이 도메인으로 바꿔 로그인과 게임 진행이 동작한다. 외부에서 읽기 전용으로 추가 확인한 결과(2026-10-19):
+  - `http://…` 요청은 301로 `https://…`에 리다이렉트된다. 헬스체크는 `UP`, 토큰 없는 `/api/v1/me`·`/actuator/env`·`/actuator/info`는 401이다.
+  - 인증서는 Let's Encrypt 발급이고 TLS 1.2·1.3이 동작한다(TLS 1.0·1.1 거부 여부는 로컬 OpenSSL이 시도 자체를 막아 확인하지 못했다). 8080·22 포트는 외부에서 닫혀 있다.
+  - `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options` 헤더는 **앱(Spring Security)이 보낸다.** 그래서 Nginx에 HSTS를 또 추가하면 헤더가 중복된다.
+- 남은 선택 항목(필수는 아님):
+  - [x] `server_tokens off;`로 응답 헤더의 Nginx 버전 노출을 껐다(`Server: nginx`로 확인).
+  - [x] 알 수 없는 Host의 HTTPS 요청을 앱까지 넘기지 않는다. 적용 전에는 IP나 다른 이름으로 접속해도 Nginx가 앱으로 프록시해서(401) 스캐너 트래픽이 앱에 닿았다. 443에 `ssl_reject_handshake on;`인 기본 서버를 두었고(`deploy/nginx/01-default-reject.conf`), IP 직접 접속이나 다른 이름의 SNI는 핸드셰이크가 거부된다(curl 종료 코드 35).
+    - SNI는 우리 도메인이고 `Host`만 다른 요청은 핸드셰이크를 통과해서, 처음에는 Nginx 기본 환영 페이지(200)를 받았다. 예상했던 404가 아니었는데, 이 서버 블록에 `root`가 없어 기본 문서 폴더를 서비스하기 때문이다. `return 444;`를 추가해 지금은 응답 없이 연결이 닫힌다(HTTP 코드 `000`, curl 종료 코드 56).
+    - HTTP는 80 포트의 certbot 리다이렉트 블록이 알 수 없는 Host를 `return 404`로 막는다.
+  - [x] `/etc/letsencrypt/options-ssl-nginx.conf`의 `ssl_protocols`가 TLS 1.2 이상인지 서버에서 확인한다.
+  - [x] Nginx 설정을 저장소에 두었다(`deploy/nginx/`): 사이트 설정(certbot 적용 전 모양, 도메인은 `<도메인>`), 하드닝 파일 두 개, 설치부터 인증서·하드닝·검증·되돌리기·도메인 교체까지의 절차를 담은 `README.md`. 서버에는 이 문서의 순서(사이트 설정 → 인증서 → 하드닝)대로 이미 적용돼 있다.
+  - [ ] 인증 경로(`/api/v1/auth/`)의 요청 빈도 제한(`limit_req`)은 7단계에서 검토한다. 게스트 등록은 토큰 없이 DB 행을 만들기 때문이다. 모바일 통신사 공유 IP를 고려해 한도는 넉넉하게 잡는다.
 - 참고: JWT 발급자(`app.jwt.issuer`)는 URL이 아니라 고정 문자열이라 도메인을 바꿔도 발급된 토큰이 무효화되지 않는다. 무료 도메인은 가용성과 인증서 발급 한도를 보장하지 않으므로 정식 출시에는 쓰지 않는다.
 
 ### 5단계. CI 확장 (PR 단계)
-- [ ] 새 워크플로 `ci.yml`: `./gradlew build`(테스트 포함) 실행. ubuntu 러너에는 Docker가 있어 Testcontainers가 그대로 동작한다.
-- [ ] Gradle 캐시 적용으로 시간 단축
+- [x] 빌드·테스트 CI는 팀이 이미 `.github/workflows/test.yml`(Tests, 잡 이름 `Test`)로 구현했다. `./gradlew test`를 PR과 `main` 푸시에서 실행하고, ubuntu 러너의 Docker로 Testcontainers가 동작한다. 별도 `ci.yml`은 만들지 않는다.
+- [x] Gradle 캐시는 `test.yml`의 `setup-java`(`cache: gradle`)로 이미 적용돼 있다.
 - [ ] GitHub 브랜치 보호: `main`에 Checkstyle·빌드(Test)·식별 정보 검사(Identifier check) 통과 필수, 리뷰 1명 이상(CONTRIBUTING에 이미 명시된 방침). 새 검사는 워크플로가 한 번 실행된 뒤에야 필수 검사 목록에 나타난다.
 - 검증: 테스트가 깨지는 PR은 병합 버튼이 막힌다.
 

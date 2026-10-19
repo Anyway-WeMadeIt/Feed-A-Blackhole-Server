@@ -118,8 +118,24 @@ docker run --rm -p 8080:8080 \
 
 - 공통 설정 파일은 `src/main/resources/application.properties`입니다.
 - 인증 정보는 커밋하지 않습니다. `.env`와 `.env.*`는 제외하고 `.env.example`만 공유합니다.
-- GitHub Actions CI는 두 워크플로입니다. **Code style**(`.github/workflows/code-style.yml`)은 Checkstyle만 실행하고, **Tests**(`.github/workflows/test.yml`)는 `./gradlew test` 전체(Testcontainers MySQL, E2E 포함)를 실행합니다. 둘 다 PR과 `main` 푸시에서 돌고 서로 별개의 검사(`Checkstyle`, `Test`)로 표시됩니다. Tests는 `.env`나 시크릿이 필요 없고(`build.gradle`이 테스트용 값을 지정), 실패하면 `build/reports/tests/`와 `build/test-results/`를 `test-reports` 아티팩트로 올립니다.
+- GitHub Actions CI는 세 워크플로입니다. **Code style**(`.github/workflows/code-style.yml`)은 Checkstyle만 실행하고, **Tests**(`.github/workflows/test.yml`)는 `./gradlew test` 전체(Testcontainers MySQL, E2E 포함)를 실행합니다. 셋째인 **Identifier check**(`.github/workflows/identifier-check.yml`)는 문서·설정에 계정 ID, 엔드포인트, 리소스 ID, 공인 IP 같은 인프라 식별 정보가 들어갔는지 `scripts/check-identifiers.sh`로 검사합니다([CONTRIBUTING.md](CONTRIBUTING.md)의 "인프라 식별 정보" 참고). 셋 모두 PR과 `main` 푸시에서 돌고 서로 별개의 검사(`Checkstyle`, `Test`, `Identifier check`)로 표시됩니다. Tests는 `.env`나 시크릿이 필요 없고(`build.gradle`이 테스트용 값을 지정), 실패하면 `build/reports/tests/`와 `build/test-results/`를 `test-reports` 아티팩트로 올립니다.
 - 브랜치 보호·필수 리뷰와 병합 방식은 GitHub에서 별도로 설정해야 합니다. 문서와 템플릿 추가만으로 활성화되지 않습니다.
+
+## 배포와 운영
+
+운영 환경은 AWS 서울 리전입니다.
+
+```
+클라이언트 ─HTTPS─▶ Nginx(EC2) ─▶ 앱 컨테이너(127.0.0.1:8080) ─▶ RDS(MySQL 8.4, 프라이빗 서브넷)
+```
+
+- 앱은 EC2에서 Docker 컨테이너로 실행하고, 이미지는 ECR에 올립니다. 서버 접속은 SSH 없이 SSM Session Manager로 합니다.
+- 설정과 비밀값(`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`)은 이미지에 넣지 않고 Parameter Store(`/blackhole/*`)에서 읽어 실행할 때 환경변수로 주입합니다.
+- 이미지 교체와 롤백은 EC2에서 [`deploy/deploy.sh <태그>`](deploy/deploy.sh)로 합니다. 설정을 검증한 뒤 새 이미지를 받아 컨테이너를 교체하고, 헬스체크(`/actuator/health`)가 실패하면 직전 정상 태그로 되돌립니다.
+- HTTPS 프록시(Nginx) 설정과 인증서 발급·갱신 절차는 [deploy/nginx/README.md](deploy/nginx/README.md)에 있습니다.
+- 현재는 사람이 `deploy.sh`를 실행합니다. `main` 병합 시 자동 배포(CD)는 후속 단계입니다.
+- 전체 계획과 진행 상황은 [docs/deploy-plan.md](docs/deploy-plan.md)를 참고하세요.
+- 이 저장소는 공개라서 계정 ID, 엔드포인트, IP 같은 배포 환경의 식별 정보는 문서에 적지 않습니다([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## 노드 콘텐츠
 
