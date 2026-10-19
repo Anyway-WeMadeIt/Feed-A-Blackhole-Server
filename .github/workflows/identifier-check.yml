@@ -1,0 +1,34 @@
+# 문서·설정에 인프라 식별 정보(AWS 계정 ID, 엔드포인트, 리소스 ID, 공인 IP 등)가 들어가지 않았는지 검사한다.
+# 이 저장소는 공개라서 실제 값 대신 자리표시자(<계정ID> 등)를 쓴다. 규칙과 사용법은 scripts/check-identifiers.sh를 본다.
+# 코드 스타일(code-style.yml), 테스트(test.yml)와 분리해서, 한쪽이 실패해도 다른 쪽 결과가 보이고
+# 브랜치 보호의 필수 검사도 따로 지정할 수 있다.
+name: Identifier check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 같은 브랜치(PR)에 새 푸시가 오면 앞서 돌던 실행을 취소한다
+concurrency:
+  group: identifier-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  identifiers:
+    # 브랜치 보호의 필수 검사는 이 잡 이름(Identifier check)으로 지정한다
+    name: Identifier check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # 검사 규칙이 의도대로 동작하는지 먼저 확인한다(규칙이 깨진 채로 "문제 없음"이 나오는 것을 막는다)
+      - name: Self-test the checker
+        run: bash scripts/check-identifiers.sh --self-test
+      # 로그가 공개라서, 스크립트는 발견한 값이 아니라 파일·줄 번호·규칙 이름만 출력한다
+      - name: Check identifiers
+        run: bash scripts/check-identifiers.sh

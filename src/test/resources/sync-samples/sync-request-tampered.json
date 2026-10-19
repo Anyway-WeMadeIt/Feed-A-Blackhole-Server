@@ -1,0 +1,66 @@
+{
+  "logs": [
+    {
+      "seq": 1,
+      "type": "RUN_START",
+      "occurredAtUtc": "2026-10-12T10:00:00Z",
+      "buildVersion": "0.4.0",
+      "contentVersion": "4d6c398ad1f5e49c",
+      "payload": {
+        "runId": "6f1c2b0a-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+        "seed": 123456,
+        "startGrowthStage": 0,
+        "startGold": 0,
+        "startLevel": 0,
+        "timeLimitSeconds": 12.0,
+        "startSupply": [
+          {
+            "enemyId": "asteroid",
+            "count": 20
+          }
+        ]
+      }
+    },
+    {
+      "seq": 2,
+      "type": "SETTLEMENT",
+      "occurredAtUtc": "2026-10-12T10:00:15Z",
+      "buildVersion": "0.4.0",
+      "contentVersion": "4d6c398ad1f5e49c",
+      "payload": {
+        "runId": "6f1c2b0a-3d4e-4f5a-8b6c-7d8e9f0a1b2c",
+        "playedSeconds": 12.0,
+        "kills": [
+          {
+            "enemyId": "asteroid",
+            "tier": 0,
+            "size": 1,
+            "golden": false,
+            "count": 20
+          }
+        ],
+        "goldenCritCount": 0,
+        "goldenCritBonusGold": 0,
+        "earnedGold": 99999,
+        "exp": 20,
+        "reachedLevel": 0,
+        "reachedMilestone": false,
+        "timeBonusCount": 0,
+        "settledGold": 99999,
+        "nextGrowthStage": 0
+      }
+    },
+    {
+      "seq": 3,
+      "type": "NODE_PURCHASE",
+      "occurredAtUtc": "2026-10-12T10:00:20Z",
+      "buildVersion": "0.4.0",
+      "contentVersion": "4d6c398ad1f5e49c",
+      "payload": {
+        "nodeId": "timer-01",
+        "rank": 1,
+        "cost": 2
+      }
+    }
+  ]
+}

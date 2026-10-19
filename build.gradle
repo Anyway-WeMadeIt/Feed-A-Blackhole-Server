@@ -22,18 +22,35 @@ repositories {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.flywaydb:flyway-mysql'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'com.mysql:mysql-connector-j'
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-mysql'
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
 }
 
+// 버전이 바뀌어도 Dockerfile이 같은 이름으로 복사할 수 있도록 실행 jar 이름을 고정한다.
+tasks.named('bootJar') {
+    archiveFileName = 'app.jar'
+}
+
 tasks.named('test') {
     useJUnitPlatform()
+    // 테스트용 JWT 서명 키. 실제 값이 아니며, .env가 없는 환경(CI 등)에서도 테스트가 돌도록 한다.
+    environment 'JWT_SECRET', 'test-only-jwt-secret-for-automated-tests-0123456789'
+    // 스프링을 띄우는 테스트는 샘플 콘텐츠 묶음 위에서 돈다(계약 결정 C30). 서버 실행은 이 설정이 없어 실제 콘텐츠를 쓴다.
+    systemProperty 'blackhole.content.location', 'classpath:content-sample/'
 }
 
 checkstyle {

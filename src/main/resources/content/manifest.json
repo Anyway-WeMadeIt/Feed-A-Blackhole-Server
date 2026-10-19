@@ -1,0 +1,12 @@
+{
+  "formatVersion": 1,
+  "contentVersion": "bc7a4b2507a75b36",
+  "files": [
+    "nodes/UpgradeStats.csv",
+    "nodes/Nodes.csv",
+    "nodes/NodeCost.csv",
+    "nodes/NodeEffects.csv",
+    "nodes/layout.json",
+    "battle/battle.json"
+  ]
+}

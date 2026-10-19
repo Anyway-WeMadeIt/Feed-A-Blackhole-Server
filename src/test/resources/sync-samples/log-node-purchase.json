@@ -1,0 +1,12 @@
+{
+  "seq": 3,
+  "type": "NODE_PURCHASE",
+  "occurredAtUtc": "2026-10-12T10:00:20Z",
+  "buildVersion": "0.4.0",
+  "contentVersion": "4d6c398ad1f5e49c",
+  "payload": {
+    "nodeId": "timer-01",
+    "rank": 1,
+    "cost": 2
+  }
+}
