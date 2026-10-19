@@ -144,11 +144,12 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
 - [x] 검증: `main` 대상 PR에서 일부러 실패시킨 테스트와 가짜 식별 정보가 각각 `Test`, `Identifier check` 실패로 표시되고 병합 버튼이 막히는 것을 확인했다(검증용 브랜치와 PR은 병합하지 않고 닫는다).
 
 ### 6단계. CD (main 병합 시 자동 배포)
-- [ ] AWS에 GitHub OIDC 공급자와 배포용 IAM 역할 생성(저장소·브랜치로 신뢰 범위 제한, 권한은 최소)
-- [ ] 워크플로 `deploy.yml`(`main` 푸시 트리거): 테스트 → 이미지 빌드(태그: 커밋 SHA) → ECR 푸시 → SSM Run Command로 EC2의 `deploy.sh <태그>` 실행 → 헬스체크 → 실패 시 자동으로 이전 태그로 롤백
+- [x] AWS에 GitHub OIDC 공급자와 배포용 IAM 역할(`blackhole-github-deploy`)을 만들었다. 신뢰 정책은 `aud`와 `sub`(이 저장소의 `production` 환경)를 정확히 일치시키고, 권한은 ECR 푸시(리포지토리 한정, `DescribeImages` 포함)와 해당 인스턴스에 대한 `AWS-RunShellScript` SSM 실행으로 한정했다.
+- [x] GitHub Environment `production`: 승인자 지정, 배포 브랜치는 `main`만. 역할 ARN과 인스턴스 ID는 이 환경의 **시크릿**(`AWS_ROLE_ARN`, `EC2_INSTANCE_ID`)에 둔다. 저장소와 로그가 공개라서 값이 로그에서 가려지게 하려는 것이다. 승인 단계가 있으면 OIDC 토큰의 `sub`가 브랜치가 아니라 환경 이름(`environment:production`)이 되므로, 신뢰 정책도 그에 맞춘다.
+- [x] 워크플로 `deploy.yml`(`main` 푸시 트리거, 작성 완료·첫 실행 검증 전): 테스트 → 이미지 빌드(태그: 커밋 SHA) → ECR 푸시 → SSM Run Command로 EC2의 `deploy.sh <태그>` 실행 → 헬스체크 → 실패 시 자동으로 이전 태그로 롤백
   - 교체·헬스체크·롤백 로직은 `deploy/deploy.sh`에 있다. 워크플로는 이 스크립트를 SSM으로 EC2에서 실행하고 **종료 코드와 출력**만 본다. 스크립트가 EC2에 있어야 하므로 워크플로가 실행 직전에 저장소의 파일 내용을 SSM 명령으로 전달하는 방식을 쓴다.
 - [x] 직전에 정상 동작한 태그를 EC2에 기록해 두어 롤백 대상으로 쓴다: `deploy.sh`가 `/var/lib/blackhole/last-good-tag`에 기록한다. 다만 ECR 수명 주기 규칙(최근 10개 유지)이 그 이미지를 지우지 않는지는 남은 확인 사항이며, 스크립트는 이미지가 로컬에 없으면 다시 받는다.
-- [ ] 배포 동시 실행 방지(`concurrency`), 실패 시 알림(GitHub 기본 메일 또는 Slack)
+- [x] 배포 동시 실행 방지(`concurrency`, 진행 중인 배포는 취소하지 않고 대기). [ ] 실패 시 알림은 GitHub 기본 메일을 쓴다(첫 실패 때 수신 여부를 확인한다).
 - 검증: 사소한 변경을 `main`에 병합하면 사람 손 없이 배포되고, 일부러 헬스체크가 실패하는 변경을 넣으면 롤백된다.
 
 ### 7단계. 운영 최소 점검
