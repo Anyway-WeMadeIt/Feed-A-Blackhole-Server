@@ -15,6 +15,7 @@
 | [blackhole.conf](blackhole.conf) | `/etc/nginx/conf.d/blackhole.conf` | 도메인의 요청을 앱으로 프록시한다. **인증서 적용 전 모양**이다 |
 | [00-hardening.conf](00-hardening.conf) | `/etc/nginx/conf.d/00-hardening.conf` | 응답 헤더에서 Nginx 버전을 숨긴다(`server_tokens off`) |
 | [01-default-reject.conf](01-default-reject.conf) | `/etc/nginx/conf.d/01-default-reject.conf` | 우리 도메인이 아닌 이름·IP의 HTTPS 요청을 앱까지 넘기지 않고 거부한다 |
+| [02-rate-limit.conf](02-rate-limit.conf) | `/etc/nginx/conf.d/02-rate-limit.conf` | 인증 경로(`/api/v1/auth/`)의 요청 빈도를 IP별로 제한한다. 한도를 넘으면 `429`를 돌려준다 |
 
 `blackhole.conf`는 서버에서 certbot이 직접 고친다(443 서버 블록, 인증서 경로, 리다이렉트 추가). 그래서 저장소에는 **certbot이 고치기 전 모양만** 두었다. 서버의 최종 파일을 그대로 복사해 두지 않는 이유는 인증서 경로가 들어가 도메인에 묶이기 때문이다.
 
@@ -75,13 +76,14 @@ sudo certbot certificates
 ### 4. 하드닝 적용
 
 ```bash
-sudo cp ~/repo/deploy/nginx/00-hardening.conf ~/repo/deploy/nginx/01-default-reject.conf /etc/nginx/conf.d/
+sudo cp ~/repo/deploy/nginx/00-hardening.conf ~/repo/deploy/nginx/01-default-reject.conf ~/repo/deploy/nginx/02-rate-limit.conf /etc/nginx/conf.d/
 sudo nginx -t && sudo systemctl reload nginx
 sudo certbot renew --dry-run
 ```
 
-- `reload`는 기존 연결을 끊지 않고 설정을 다시 읽는다(무중단).
+- `reload`는 기존 연결을 끊지 않고 설정을 다시 읽는다(무중단). 문법이 틀리면 `nginx -t`에서 멈추고 `reload`는 실행되지 않아 운영에 영향이 없다.
 - 마지막 줄은 하드닝이 갱신 경로에 영향이 없는지 확인한다.
+- 이미 하드닝을 적용한 서버에 요청 빈도 제한만 더할 때는 `sudo cp ~/repo/deploy/nginx/02-rate-limit.conf /etc/nginx/conf.d/`만 하고 같은 방식으로 검사·반영한다.
 
 ### 5. 정리
 
@@ -102,6 +104,16 @@ rm -rf ~/repo
 | `curl.exe -sk -o NUL -w "%{http_code}" -H "Host: example.invalid" https://<도메인>/` | `000`(응답 없이 연결을 닫음. `01-default-reject.conf`의 `return 444`) |
 | `curl.exe -k https://<탄력적 IP>/` | TLS 핸드셰이크 실패(종료 코드 35). SNI 없는 IP 접속은 거부된다 |
 
+요청 빈도 제한은 **계정이 생기지 않는 요청**으로 확인한다. 빈 본문으로 `register`를 호출하면 앱이 검증에서 거부하므로 DB에는 아무것도 쓰이지 않지만, Nginx는 요청 횟수를 센다.
+
+```powershell
+1..40 | ForEach-Object { curl.exe -s -o NUL -w "%{http_code} " -X POST -H "Content-Type: application/json" -d "{}" https://<도메인>/api/v1/auth/guest/register }
+```
+
+- 앞의 약 21개(평상시 1 + burst 20)는 앱의 거부 응답(`4xx`)이고, 그 뒤로는 `429`가 나온다. 정확한 개수는 요청 간격에 따라 몇 개 다를 수 있다.
+- 다른 경로가 막히지 않는지도 본다: `curl.exe -s -o NUL -w "%{http_code}" https://<도메인>/actuator/health`가 계속 `200`이어야 한다.
+- 시험으로 걸린 제한은 약 6초(분당 10회) 뒤부터 풀리기 시작한다. 거부 기록은 서버의 `sudo grep limiting /var/log/nginx/error.log | tail`로 본다.
+
 끝으로 클라이언트로 로그인과 게임 진행이 되는지 확인한다.
 
 ## 운영 메모
@@ -114,10 +126,10 @@ rm -rf ~/repo
 
 ## 되돌리기
 
-하드닝만 되돌리려면 추가한 두 파일을 지우고 다시 반영한다.
+하드닝만 되돌리려면 추가한 파일을 지우고 다시 반영한다. 요청 빈도 제한 때문에 정상 사용자가 막힌다면 `02-rate-limit.conf`만 지우면 즉시 풀린다.
 
 ```bash
-sudo rm /etc/nginx/conf.d/00-hardening.conf /etc/nginx/conf.d/01-default-reject.conf
+sudo rm /etc/nginx/conf.d/00-hardening.conf /etc/nginx/conf.d/01-default-reject.conf /etc/nginx/conf.d/02-rate-limit.conf
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
@@ -133,7 +145,13 @@ JWT 발급자(`app.jwt.issuer`)는 URL이 아니라 고정 문자열이라 도�
 
 ## 이 설정이 다루지 않는 것
 
-- 요청 빈도 제한(`limit_req`): 인증 경로(`/api/v1/auth/`) 보호는 후속 단계에서 검토한다.
+- 여러 IP를 쓰는 분산 공격: 요청 빈도 제한은 한 IP의 반복 호출만 막는다. IPv6 사용자가 주소를 바꿔 가며 우회하는 경우도 막지 못한다.
 - 로그 전송, 알람: 운영 점검 단계에서 다룬다.
+
+## 요청 빈도 제한 메모
+
+- 대상은 인증 경로뿐이다. `guest/register`(토큰 없이 DB에 계정을 만드는 경로)는 **IP당 분당 10회, 순간 20회**, 인증 경로 전체(`login`, `refresh`, `logout` 포함)는 **분당 60회, 순간 30회**다. 한도는 통신사나 공유 네트워크의 IP를 여러 사람이 나눠 쓰는 경우를 감안해 넉넉하다.
+- 한도를 넘으면 `429`를 돌려준다. 클라이언트는 `429`를 받으면 잠시 후 재시도해야 한다.
+- 값은 `02-rate-limit.conf`에서 바꾼다. 앞단에 로드밸런서나 CDN을 두게 되면 `$remote_addr`가 그 장비의 IP가 되므로, 클라이언트 IP를 복원하는 `real_ip` 설정을 먼저 더해야 한다(안 하면 모두가 한 IP로 보여 정상 사용자가 막힌다).
 
 전체 배포 계획과 진행 상황은 [docs/deploy-plan.md](../../docs/deploy-plan.md)를 본다.
