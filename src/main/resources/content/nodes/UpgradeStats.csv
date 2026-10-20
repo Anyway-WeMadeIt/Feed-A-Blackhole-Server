@@ -70,3 +70,6 @@ gravityGalaxy.spawnChance,Float,Percent,0,Add,0,100,신규
 gravityGalaxy.radius,Float,Percent,100,Add,0,,신규
 gravityGalaxy.force,Float,Percent,100,Add,0,,신규
 gravityGalaxy.duration,Float,Flat,3,Add,0,,신규
+laserStar.galaxyBonusDamage,Float,Flat,0,Add,0,,신규
+supernovaStar.galaxyBonusDamage,Float,Flat,0,Add,0,,신규
+electricStar.galaxyBonusDamage,Float,Flat,0,Add,0,,신규
