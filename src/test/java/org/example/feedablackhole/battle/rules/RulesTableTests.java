@@ -145,11 +145,17 @@ class RulesTableTests {
                 diff.eq(at + " timeLimitSeconds", f(loadout.get("timeLimitSeconds")), run.timeLimitSeconds());
                 diff.eq(at + " growthTimeSeconds", f(loadout.get("growthTimeSeconds")), run.growthTimeSeconds());
                 diff.eq(at + " killTimeBonusSeconds", f(loadout.get("killTimeBonusSeconds")), run.killTimeBonusSeconds());
-                diff.eq(at + " startSupply", supplyOf(loadout.get("startSupply")), supplyOf(run.startSupply()));
+                // 은하의 색과 공급은 성장도가 정한다(loadout 값은 성장도 0 기준이라 은하가 없다): 은하가 나오는 판은 은하 1마리가 더해진다
+                int galaxyTier = stage.get("galaxyTier").asInt();
+                List<String> expectedSupply = new ArrayList<>(supplyOf(loadout.get("startSupply")));
+                if (galaxyTier >= 0 && !expectedSupply.stream().anyMatch(e -> e.startsWith("galaxy "))) {
+                    expectedSupply.add("galaxy x1");
+                }
+                diff.eq(at + " startSupply", expectedSupply, supplyOf(run.startSupply()));
 
                 for (JsonNode kind : loadout.get("kinds")) {
                     String enemyId = kind.get("enemyId").asString();
-                    compareKind(diff, at + " " + enemyId, kind, run.kind(enemyId));
+                    compareKind(diff, at + " " + enemyId, kind, run.kind(enemyId), galaxyTier);
                 }
             }
         }
@@ -176,13 +182,17 @@ class RulesTableTests {
         diff.assertNone();
     }
 
-    private static void compareKind(Mismatches diff, String at, JsonNode k, KindSetup kind) {
+    private static void compareKind(Mismatches diff, String at, JsonNode k, KindSetup kind, int galaxyTier) {
         diff.eq(at + " pickup", k.get("pickup").asBoolean(), kind.pickup());
         diff.eq(at + " maxSize", k.get("maxSize").asInt(), kind.maxSize());
 
         JsonNode possible = k.get("tierPossible");
         for (int t = 0; t < possible.size(); t++) {
-            diff.eq(at + " tierPossible[" + t + "]", possible.get(t).asBoolean(), kind.tierPossible(t));
+            boolean expected = possible.get(t).asBoolean();
+            if ("galaxy".equals(k.get("enemyId").asString()) && galaxyTier >= 0) {
+                expected = t == Math.min(galaxyTier, possible.size() - 1); // 은하는 이 판의 은하 색으로만 나온다
+            }
+            diff.eq(at + " tierPossible[" + t + "]", expected, kind.tierPossible(t));
         }
 
         boolean goldenPossible = k.get("goldenPossible").asBoolean();

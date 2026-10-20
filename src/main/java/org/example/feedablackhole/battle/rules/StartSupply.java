@@ -14,6 +14,7 @@ import java.util.Map;
  * <ol>
  * <li>콘텐츠의 시작 적을 종류마다 합치고, 노드로 늘어난 시작 수(보너스)를 더한다
  * <li>변환 사슬 앞쪽부터, 종류마다 변환 수만큼 다음 종류로 옮긴다(가진 수보다 많이 옮기지 않는다)
+ * <li>은하가 나오는 판이면 은하 1마리를 더한다(변환과 성장 공급에는 들지 않는다)
  * <li>마릿수가 0이 된 종류는 빼고, 종류는 처음 나온 순서로 돌려준다
  * </ol>
  */
@@ -27,9 +28,10 @@ public final class StartSupply {
      *
      * @param content 전투 콘텐츠(콘텐츠의 시작 적과 종류 정의)
      * @param kinds   이 판의 종류 구성(종류 이름 -> 구성). 시작 수 보너스와 변환 수를 담고 있다
+     * @param withGalaxy 은하가 나오는 판인가(이미 공급에 있으면 더하지 않는다)
      * @return 종류마다 하나, 처음 나온 종류 순서, 0마리 종류는 제외
      */
-    static List<SupplyEntry> of(BattleContent content, Map<String, KindComposition> kinds) {
+    static List<SupplyEntry> of(BattleContent content, Map<String, KindComposition> kinds, boolean withGalaxy) {
         // order: 처음 나온 종류의 순서(결과의 순서). counts: 종류 이름 -> 합친 마릿수
         List<String> order = new ArrayList<>();
         Map<String, Integer> counts = new HashMap<>();
@@ -61,6 +63,15 @@ public final class StartSupply {
 
                 counts.put(enemyId, have - moved); // 원래 종류에서 빼고
                 add(order, counts, target, moved); // 대상 종류에 더한다
+            }
+        }
+
+        // 은하는 변환 뒤에 더한다. 공급에 이미 있으면 그대로 둔다
+        if (withGalaxy) {
+            for (String enemyId : kinds.keySet()) {
+                if (RunComposition.GALAXY_ID.equals(enemyId) && !counts.containsKey(enemyId)) {
+                    add(order, counts, enemyId, 1);
+                }
             }
         }
 

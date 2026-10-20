@@ -93,7 +93,10 @@ class RealNodeContentTests {
             "gravityGalaxy.spawnChance",
             "gravityGalaxy.radius",
             "gravityGalaxy.force",
-            "gravityGalaxy.duration");
+            "gravityGalaxy.duration",
+            "laserStar.galaxyBonusDamage",
+            "supernovaStar.galaxyBonusDamage",
+            "electricStar.galaxyBonusDamage");
 
     private static NodeTree tree;
 
@@ -110,11 +113,11 @@ class RealNodeContentTests {
 
     @Test
     void sizesMatchTheContentThatWasImported() {
-        assertThat(tree.content().stats()).hasSize(71);
-        assertThat(tree.content().nodes()).hasSize(263);
-        assertThat(tree.nodes()).hasSize(263);
-        assertThat(tree.content().nodes().stream().mapToInt(NodeDefinition::maxRank).sum()).isEqualTo(335);
-        assertThat(tree.graph().links()).hasSize(313);
+        assertThat(tree.content().stats()).hasSize(74);
+        assertThat(tree.content().nodes()).hasSize(233);
+        assertThat(tree.nodes()).hasSize(233);
+        assertThat(tree.content().nodes().stream().mapToInt(NodeDefinition::maxRank).sum()).isEqualTo(356);
+        assertThat(tree.graph().links()).hasSize(275);
         assertThat(tree.graph().nodes().stream().filter(tree.graph()::isStart)).hasSize(1);
         assertThat(tree.unplaced()).isEmpty();
     }
@@ -137,13 +140,14 @@ class RealNodeContentTests {
     void knownNodesHaveTheExpectedCostsAndRanks() {
         NodeDefinition timer02 = tree.node("timer-02").orElseThrow();
         assertThat(timer02.maxRank()).isEqualTo(1);
-        assertThat(timer02.rankAt(1).cost()).isEqualTo(12_000_000_000_000L);
+        assertThat(timer02.rankAt(1).cost()).isEqualTo(18_000_000_000_000L);
 
-        assertThat(tree.content().nodes().stream().filter(node -> node.maxRank() == 10)).hasSize(8);
-        assertThat(tree.content().nodes().stream().filter(node -> node.maxRank() == 1)).hasSize(255);
+        assertThat(tree.content().nodes().stream().filter(node -> node.maxRank() == 10)).hasSize(4);
+        assertThat(tree.content().nodes().stream().filter(node -> node.maxRank() == 30)).hasSize(3);
+        assertThat(tree.content().nodes().stream().filter(node -> node.maxRank() == 1)).hasSize(226);
         assertThat(tree.content().nodes().stream()
                 .flatMap(node -> node.ranks().stream()).mapToLong(NodeRankDefinition::cost).max().orElseThrow())
-                .isEqualTo(1_800_000_000_000_000L);   // 최대 비용
+                .isEqualTo(71_000_000_000_000_000L);   // 최대 비용
     }
 
     @Test

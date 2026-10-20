@@ -216,6 +216,12 @@ public final class BattleContentValidator {
             }
             previousGold = milestone.targetGold();
         }
+
+        // 은하 시작 성장도는 0(없음)부터 이정표 수까지다
+        if (growth.galaxyStage() < 0 || growth.galaxyStage() > growth.maxStage()) {
+            into.add(new ContentDiagnostic("growth.galaxyStage",
+                    "0(없음)부터 " + growth.maxStage() + "(이정표 수)까지다."));
+        }
     }
 
     // ---------- 시작 공급 (규칙 8) ----------

@@ -168,6 +168,7 @@ comet.spawnChance-02,1,펄서 · 초신성
 electricStar.damage-02,1,펄서 · 초신성
 laserStar.spawnChance-01,1,펄서 · 초신성
 laserStar.critChance-01,1,펄서 · 초신성
+star.massScale-05,1,펄서 · 초신성
 electricStar.critBonus-01,1,펄서 · 초신성
 laserStar.width-01,1,펄서 · 초신성
 laserStar.damage-01,1,펄서 · 초신성
@@ -186,13 +187,12 @@ supernovaStar.damage-01,1,초신성 잔해
 star.respawnChance-04,1,펄서 · 초신성
 laserStar.damage-02,1,펄서 · 초신성
 supernovaStar.spawnChance-01,1,펄서 · 초신성
-star.massScale-05,1,펄서 · 초신성
+star.massScale-06,1,펄서 · 초신성
 laserStar.critBonus-02,1,펄서 · 초신성
 supernovaStar.range-02,1,초신성 잔해
 comet.spawnChance-03,1,초신성 잔해
 supernovaStar.damage-02,1,초신성 잔해
 breaker.damage-27,1,초신성 잔해
-laserStar.width-03,1,펄서 · 초신성
 laserStar.damage-03,1,펄서 · 초신성
 laserStar.damage-04,1,펄서 · 초신성
 laserStar.width-04,1,펄서 · 초신성
@@ -218,47 +218,17 @@ supernovaStar.range-03,1,초신성 잔해
 breaker.damage-28,1,초신성 잔해
 laserStar.width-08,1,초신성 잔해
 supernovaStar.range-04,1,초신성 잔해
-supernovaStar.damage-04,1,초신성 잔해
+asteroid.toPlanet-06,1,초신성 잔해
 planet.toStar-05,1,초신성 잔해
-supernovaStar.damage-05,1,초신성 잔해
+planet.toStar-07,1,초신성 잔해
 supernovaStar.damage-06,1,초신성 잔해
-timer-04,1,초신성 잔해
+asteroid.count-05,1,초신성 잔해
 laserStar.width-09,1,초신성 잔해
 star.massScale-09,1,초신성 잔해
-star.toGalaxy-01,1,은하핵
-growth.galaxies-01,1,은하핵
-breaker.galaxyBonusDamage-01,1,은하핵
-gravityGalaxy.spawnChance-01,1,은하핵
-galaxy.size-01,1,초신성 잔해
-galaxy.timeChance-01,1,은하핵
-galaxy.massScale-01,1,초신성 잔해
-gravityGalaxy.radius-01,1,은하핵
-gravityGalaxy.force-01,1,은하핵
-gravityGalaxy.duration-01,1,은하핵
-galaxy.size-02,1,은하핵
-galaxy.respawnChance-01,1,은하핵
-star.toGalaxy-02,1,은하핵
-galaxy.massScale-02,1,은하핵
-breaker.galaxyBonusDamage-02,1,은하핵
-gravityGalaxy.radius-02,1,은하핵
-gravityGalaxy.spawnChance-02,1,은하핵
-gravityGalaxy.duration-02,1,은하핵
-growth.galaxies-02,1,은하핵
-gravityGalaxy.force-02,1,은하핵
-galaxy.massScale-03,1,은하핵
-galaxy.respawnChance-02,1,은하핵
-star.toGalaxy-03,1,은하핵
-breaker.galaxyBonusDamage-03,1,은하핵
-gravityGalaxy.spawnChance-03,1,은하핵
-galaxy.size-03,1,은하핵
-gravityGalaxy.radius-03,1,은하핵
-gravityGalaxy.duration-03,1,은하핵
-galaxy.massScale-04,1,은하핵
-breaker.speed-12,10,블랙홀
-breaker.critBonus-05,10,블랙홀
-asteroid.toPlanet-05,10,블랙홀
-planet.toStar-06,10,블랙홀
-star.size-03,10,블랙홀
-star.massScale-10,10,블랙홀
-electricStar.critBonus-02,10,블랙홀
-laserStar.width-10,10,블랙홀
+breaker.galaxyBonusDamage-01,30,블랙홀
+timer-04,10,블랙홀
+electricStar.galaxyBonusDamage-01,10,블랙홀
+breaker.speed-12,30,블랙홀
+breaker.critBonus-05,30,블랙홀
+laserStar.galaxyBonusDamage-01,10,블랙홀
+supernovaStar.galaxyBonusDamage-01,10,블랙홀

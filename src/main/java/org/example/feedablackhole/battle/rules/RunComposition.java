@@ -21,6 +21,8 @@ import java.util.OptionalLong;
  */
 public final class RunComposition implements RunSetup {
 
+    static final String GALAXY_ID = "galaxy";
+
     // levelForExp가 Level 사다리(Level별 누적 EXP)를 볼 때 쓴다
     private final HqGrowthDefinition growth;
 
@@ -86,6 +88,9 @@ public final class RunComposition implements RunSetup {
         long startExp = growth.expToReach(startLevel).orElse(0); // Level 0처럼 값이 없으면 0
         HqMilestone nextMilestone = growth.nextMilestoneAt(growthStage).orElse(null); // 마지막 이정표 뒤면 null
 
+        // 은하가 나오는 판이면 은하의 색 등급(이정표마다 +1)
+        int galaxyTier = growth.galaxyTierAt(growthStage);
+
         // 노드로 정해지는 시간. 제한 시간은 value가 아니라 늘어난 양(gain)을 기본 시간에 더한다(float 덧셈)
         float timeLimitSeconds = content.rules().timeLimitSeconds() + upgrades.gainOf(content.stats().timer());
         float growthTimeSeconds = upgrades.gainOf(content.stats().growthTime());
@@ -106,14 +111,23 @@ public final class RunComposition implements RunSetup {
 
         // 모든 적 종류의 구성을 한꺼번에 만든다. 노드 조합이 규칙을 어기면 KindComposition.from이 예외를 던진다
         for (EnemyKindDefinition definition : content.enemies()) {
-            kinds.put(definition.enemyId(), KindComposition.from(definition, upgrades));
+            int fixedTier = KindComposition.NOT_FIXED;
+            if (isGalaxy(definition) && galaxyTier != HqGrowthDefinition.NO_GALAXY) {
+                fixedTier = galaxyTier;
+            }
+            kinds.put(definition.enemyId(), KindComposition.from(definition, upgrades, fixedTier));
         }
 
         // 종류 구성이 모두 만들어진 뒤에 계산한다. 시작 수 보너스와 변환 수가 종류 구성에 들어 있기 때문이다
-        List<SupplyEntry> startSupply = StartSupply.of(content, kinds);
+        List<SupplyEntry> startSupply = StartSupply.of(content, kinds, galaxyTier != HqGrowthDefinition.NO_GALAXY);
 
         return new RunComposition(growth, growthStage, startLevel, goalLevel, startExp, nextMilestone,
                 timeLimitSeconds, growthTimeSeconds, killTimeBonusSeconds, kinds, startSupply);
+    }
+
+    // 은하: 판마다 하나뿐인 목표라서 색이 질량이 아니라 성장도로 정해진다
+    static boolean isGalaxy(EnemyKindDefinition definition) {
+        return GALAXY_ID.equals(definition.enemyId());
     }
 
     @Override
