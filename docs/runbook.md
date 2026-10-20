@@ -389,7 +389,7 @@ aws freetier get-account-plan-state --region us-east-1
 - **자동 백업은 1일**뿐이다. 중요한 변경 전에는 수동 스냅샷을 만든다.
 - **이전 컨테이너 로그는 교체와 함께 사라진다.** 실제 사용자가 생기면 CloudWatch Logs로 컨테이너 로그를 보내는 것을 검토한다.
 - 인증서 **갱신 실패 알림이 없다.** 3장의 만료일 점검으로 대신한다.
-- 게스트 등록(`POST /api/v1/auth/guest/register`)은 토큰 없이 DB 행을 만든다. 요청 빈도 제한 설정([`deploy/nginx/02-rate-limit.conf`](../deploy/nginx/02-rate-limit.conf))은 만들었고, **서버에 적용한 뒤** 이 줄을 "IP당 분당 10회로 제한(여러 IP를 쓰는 공격은 못 막음)"으로 고친다. 한도를 넘으면 `429`가 나가고 기록은 `sudo grep limiting /var/log/nginx/error.log`로 본다.
+- 게스트 등록(`POST /api/v1/auth/guest/register`)은 토큰 없이 DB 행을 만든다. 요청 빈도 제한([`deploy/nginx/02-rate-limit.conf`](../deploy/nginx/02-rate-limit.conf), 2026-10-20 적용·`검증됨`)으로 IP당 분당 10회(순간 20회)까지만 받는다. 한도를 넘으면 `429`가 나가고 기록은 `sudo grep limiting /var/log/nginx/error.log`로 본다. **여러 IP를 쓰는 공격은 못 막는다.** 설정은 자동 배포로 바뀌지 않으므로, 한도를 고치면 서버의 `/etc/nginx/conf.d/02-rate-limit.conf`에 직접 반영하고 `sudo nginx -t && sudo systemctl reload nginx`를 한다.
 - 도메인은 임시 무료 도메인(DuckDNS)이다. 당분간 유지하고, 바꿀 때는 아래 "정식 도메인으로 바꿀 때"를 따른다.
 - 첫 자동 배포에서 롤백 경로는 CI로 실행해 보지 못했다(수동 연습과 시나리오 테스트로만 검증).
 

@@ -134,7 +134,7 @@ GitHub Actions: main 푸시 → 테스트 → 이미지 빌드 → ECR 푸시 �
     - HTTP는 80 포트의 certbot 리다이렉트 블록이 알 수 없는 Host를 `return 404`로 막는다.
   - [x] `/etc/letsencrypt/options-ssl-nginx.conf`의 `ssl_protocols`가 TLS 1.2 이상인지 서버에서 확인한다.
   - [x] Nginx 설정을 저장소에 두었다(`deploy/nginx/`): 사이트 설정(certbot 적용 전 모양, 도메인은 `<도메인>`), 하드닝 파일 두 개, 설치부터 인증서·하드닝·검증·되돌리기·도메인 교체까지의 절차를 담은 `README.md`. 서버에는 이 문서의 순서(사이트 설정 → 인증서 → 하드닝)대로 이미 적용돼 있다.
-  - [ ] 인증 경로(`/api/v1/auth/`)의 요청 빈도 제한(`limit_req`): [`deploy/nginx/02-rate-limit.conf`](../deploy/nginx/02-rate-limit.conf)를 만들었다(register IP당 분당 10회·burst 20, 인증 경로 분당 60회·burst 30). 서버에 적용하고 `429`를 확인하면 체크한다. 게스트 등록은 토큰 없이 DB 행을 만들기 때문이다. 모바일 통신사 공유 IP를 고려해 한도는 넉넉하게 잡는다.
+  - [x] 인증 경로(`/api/v1/auth/`)의 요청 빈도 제한(`limit_req`): [`deploy/nginx/02-rate-limit.conf`](../deploy/nginx/02-rate-limit.conf)를 서버에 적용했다(2026-10-20)(register IP당 분당 10회·burst 20, 인증 경로 분당 60회·burst 30). 운영 서버에서 확인: `register`는 21번째부터 `429`(앞의 21개는 `201`), 인증 경로 `refresh`는 31~38개 뒤부터 `429`, 헬스체크와 `/api/v1/me`는 영향 없음, 70초 뒤 정상 복귀. 시험으로 테스트 계정 23개가 생겼고 다음 DB 초기화 때 지운다. 게스트 등록은 토큰 없이 DB 행을 만들기 때문이다. 모바일 통신사 공유 IP를 고려해 한도는 넉넉하게 잡는다.
 - 참고: JWT 발급자(`app.jwt.issuer`)는 URL이 아니라 고정 문자열이라 도메인을 바꿔도 발급된 토큰이 무효화되지 않는다. 무료 도메인은 가용성과 인증서 발급 한도를 보장하지 않으므로 정식 출시에는 쓰지 않는다.
 
 ### 5단계. CI 확장 (PR 단계)
