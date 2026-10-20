@@ -10,15 +10,22 @@ import java.util.OptionalLong;
  *
  * @param levelExp   levelExp[i]는 Level i + 1에 닿는 누적 EXP. Level 0은 EXP 0이다
  * @param milestones 이정표(Level이 커지는 순서). milestones[s]가 성장도 s의 판이 노리는 이정표다
+ * @param galaxyStage 은하가 나오기 시작하는 성장도. 0이면 은하가 없다
  */
-public record HqGrowthDefinition(List<Long> levelExp, List<HqMilestone> milestones) {
+public record HqGrowthDefinition(List<Long> levelExp, List<HqMilestone> milestones, int galaxyStage) {
 
     public static final int START_LEVEL = 0;
     public static final int NO_GOAL = 0;
+    public static final int NO_GALAXY = -1;
 
     public HqGrowthDefinition {
         levelExp = List.copyOf(levelExp);
         milestones = List.copyOf(milestones);
+    }
+
+    /** 은하가 없는 성장(galaxyStage 0). */
+    public HqGrowthDefinition(List<Long> levelExp, List<HqMilestone> milestones) {
+        this(levelExp, milestones, 0);
     }
 
     public int maxStage() {
@@ -27,6 +34,15 @@ public record HqGrowthDefinition(List<Long> levelExp, List<HqMilestone> mileston
 
     public int maxLevel() {
         return START_LEVEL + levelExp.size();
+    }
+
+    /**
+     * 성장도 stage의 판에 나오는 은하의 색 등급(0부터, 이정표마다 +1). 은하가 없는 판이면 NO_GALAXY.
+     * 색 수를 넘는 경우의 처리는 은하 종류의 색 수를 아는 쪽(KindComposition)이 맡는다.
+     */
+    public int galaxyTierAt(int stage) {
+        requireStage(stage);
+        return galaxyStage > 0 && stage >= galaxyStage ? stage - galaxyStage : NO_GALAXY;
     }
 
     /** 성장도 stage의 판이 시작하는 Level: 성장도 0이면 0, 아니면 마지막으로 도달한 이정표의 Level. */
