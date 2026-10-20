@@ -1,11 +1,12 @@
 {
   "formatVersion": 1,
-  "contentVersion": "ab25cac8e81ba453",
+  "contentVersion": "adc0e51625c400d8",
   "stages": [
     {
       "growthStage": 0,
       "startLevel": 0,
       "goalLevel": 10,
+      "galaxyTier": -1,
       "startExp": 0,
       "nextMilestone": {"level": 10, "targetGold": 60000000},
       "levelForExp": [
@@ -192,6 +193,7 @@
       "growthStage": 1,
       "startLevel": 10,
       "goalLevel": 20,
+      "galaxyTier": -1,
       "startExp": 180000,
       "nextMilestone": {"level": 20, "targetGold": 4000000000000},
       "levelForExp": [
@@ -349,6 +351,7 @@
       "growthStage": 2,
       "startLevel": 20,
       "goalLevel": 30,
+      "galaxyTier": -1,
       "startExp": 13800000,
       "nextMilestone": {"level": 30, "targetGold": 760000000000000},
       "levelForExp": [
@@ -476,6 +479,7 @@
       "growthStage": 3,
       "startLevel": 30,
       "goalLevel": 35,
+      "galaxyTier": -1,
       "startExp": 1684200000,
       "nextMilestone": {"level": 35, "targetGold": 1200000000000000},
       "levelForExp": [
@@ -573,6 +577,7 @@
       "growthStage": 4,
       "startLevel": 35,
       "goalLevel": 40,
+      "galaxyTier": -1,
       "startExp": 2748200000,
       "nextMilestone": {"level": 40, "targetGold": 2000000000000000},
       "levelForExp": [
@@ -655,6 +660,7 @@
       "growthStage": 5,
       "startLevel": 40,
       "goalLevel": 50,
+      "galaxyTier": -1,
       "startExp": 6105200000,
       "nextMilestone": {"level": 50, "targetGold": 3000000000000000},
       "levelForExp": [
@@ -722,6 +728,7 @@
       "growthStage": 6,
       "startLevel": 50,
       "goalLevel": 51,
+      "galaxyTier": 0,
       "startExp": 35973400000,
       "nextMilestone": {"level": 51, "targetGold": 3500000000000000},
       "levelForExp": [
@@ -759,6 +766,7 @@
       "growthStage": 7,
       "startLevel": 51,
       "goalLevel": 52,
+      "galaxyTier": 1,
       "startExp": 535973400000,
       "nextMilestone": {"level": 52, "targetGold": 7000000000000000},
       "levelForExp": [
@@ -793,6 +801,7 @@
       "growthStage": 8,
       "startLevel": 52,
       "goalLevel": 53,
+      "galaxyTier": 2,
       "startExp": 3535973400000,
       "nextMilestone": {"level": 53, "targetGold": 32000000000000000},
       "levelForExp": [
@@ -824,6 +833,7 @@
       "growthStage": 9,
       "startLevel": 53,
       "goalLevel": 54,
+      "galaxyTier": 3,
       "startExp": 21869306733333,
       "nextMilestone": {"level": 54, "targetGold": 95000000000000000},
       "levelForExp": [
@@ -852,6 +862,7 @@
       "growthStage": 10,
       "startLevel": 54,
       "goalLevel": 55,
+      "galaxyTier": 4,
       "startExp": 130202640066666,
       "nextMilestone": {"level": 55, "targetGold": 300000000000000000},
       "levelForExp": [
@@ -877,6 +888,7 @@
       "growthStage": 11,
       "startLevel": 55,
       "goalLevel": 56,
+      "galaxyTier": 5,
       "startExp": 780202640066666,
       "nextMilestone": {"level": 56, "targetGold": 1000000000000000000},
       "levelForExp": [
@@ -899,6 +911,7 @@
       "growthStage": 12,
       "startLevel": 56,
       "goalLevel": 0,
+      "galaxyTier": 6,
       "startExp": 4696869306733332,
       "nextMilestone": null,
       "levelForExp": [

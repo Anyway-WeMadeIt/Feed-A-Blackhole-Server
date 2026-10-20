@@ -111,7 +111,8 @@
         "level": 56,
         "targetGold": 1000000000000000000
       }
-    ]
+    ],
+    "galaxyStage": 6
   },
   "stats": {
     "timer": "timer",
