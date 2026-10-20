@@ -22,9 +22,13 @@ public final class KindComposition implements KindSetup {
     private final float timeChance;     // 파괴될 때 시간 추가 확률(0 ~ 1)
     private final GoldenTrait golden;   // 노드가 반영된 황금 수치. 황금 성질이 없는 종류는 null
     private final boolean goldenPossible;
+    private final int fixedTier;        // 질량과 무관하게 이 색으로만 나오는 종류(은하)의 색 등급. 아니면 NOT_FIXED
+
+    // fixedTier가 이 값이면 색 등급이 질량의 비율대로 정해진다
+    static final int NOT_FIXED = -1;
 
     private KindComposition(EnemyKindDefinition kind, float[] tierRatios, int size, int startSupplyBonus,
-            int upgradeCount, float timeChance, GoldenTrait golden, boolean goldenPossible) {
+            int upgradeCount, float timeChance, GoldenTrait golden, boolean goldenPossible, int fixedTier) {
         this.kind = kind;
         this.tierRatios = tierRatios;
         this.size = size;
@@ -33,12 +37,20 @@ public final class KindComposition implements KindSetup {
         this.timeChance = timeChance;
         this.golden = golden;
         this.goldenPossible = goldenPossible;
+        this.fixedTier = fixedTier;
+    }
+
+    /** 색이 질량의 비율대로 정해지는 종류의 판 구성. */
+    static KindComposition from(EnemyKindDefinition kind, UpgradeValues upgrades) {
+        return from(kind, upgrades, NOT_FIXED);
     }
 
     /**
      * 산 노드의 수치 값으로 이 종류의 판 구성을 계산한다. 범위 밖이면 IllegalArgumentException.
+     *
+     * @param fixedTier 이 판에서 이 종류가 나오는 색 등급(은하). 질량의 비율대로면 NOT_FIXED. 색 수를 넘으면 마지막 색이다
      */
-    static KindComposition from(EnemyKindDefinition kind, UpgradeValues upgrades) {
+    static KindComposition from(EnemyKindDefinition kind, UpgradeValues upgrades, int fixedTier) {
         EnemyStatIds stats = kind.stats();
 
         // 질량은 수치 값 그대로, 나머지는 기본값에 늘어난 양을 더한다
@@ -91,8 +103,10 @@ public final class KindComposition implements KindSetup {
         GoldenTrait golden = kind.golden() == null ? null : upgradedGolden(kind, upgrades);
         boolean goldenPossible = golden != null && goldenChance > 0; // 황금 성질이 있고 생성 확률이 0보다 크다
 
+        int tier = fixedTier == NOT_FIXED ? NOT_FIXED : Math.min(fixedTier, kind.tiers().size() - 1);
+
         return new KindComposition(kind, tierRatios, size, startSupplyBonus, upgradeCount, timeChance, golden,
-                goldenPossible);
+                goldenPossible, tier);
     }
 
     // 노드가 반영된 황금 수치: 배율과 치명 배율은 늘어난 %p ÷ 100을 더하고, 치명 확률은 1을 넘지 않게 자른다
@@ -126,11 +140,11 @@ public final class KindComposition implements KindSetup {
         return size;
     }
 
-    // 이 판의 질량에서 이 색의 비율이 0보다 큰가
+    // 이 판의 질량에서 이 색의 비율이 0보다 큰가. 색이 정해진 종류(은하)는 그 색만 가능하다
     @Override
     public boolean tierPossible(int tier) {
         requireTier(tier);
-        return tierRatios[tier] > 0;
+        return fixedTier == NOT_FIXED ? tierRatios[tier] > 0 : tier == fixedTier;
     }
 
     @Override

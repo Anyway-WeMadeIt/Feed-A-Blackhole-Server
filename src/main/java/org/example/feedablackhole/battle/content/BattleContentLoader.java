@@ -37,6 +37,7 @@ public final class BattleContentLoader {
     private static final String GROWTH = "growth";
     private static final String LEVEL_EXP = "levelExp";
     private static final String MILESTONES = "milestones";
+    private static final String GALAXY_STAGE = "galaxyStage";
     private static final String LEVEL = "level";
     private static final String TARGET_GOLD = "targetGold";
 
@@ -191,7 +192,8 @@ public final class BattleContentLoader {
                     );
                 })
                 .toList();
-        HqGrowthDefinition growthDef = new HqGrowthDefinition(levelExp, milestones);
+        HqGrowthDefinition growthDef = new HqGrowthDefinition(levelExp, milestones,
+                growth.get(GALAXY_STAGE) == null ? 0 : ((Number) growth.get(GALAXY_STAGE)).intValue());
 
         // 최상위 stats: 적 종류에 속하지 않는 수치의 statId (제한 시간, Level업당 시간)
         Map<?, ?> stats = (Map<?, ?>) object.get(STATS);
