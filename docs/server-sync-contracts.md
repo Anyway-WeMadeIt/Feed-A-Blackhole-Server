@@ -630,7 +630,7 @@ namespace BlackHole.Net
         Unreachable,         // 네트워크 오류, 타임아웃, 5xx, 시간 예산 초과
         CredentialsRejected, // 저장된 guestId·guestSecret이 거부됨(2.7)
         ProtocolError,       // 예상하지 못한 응답(400, 형식 오류 등). 버그
-        ContentOutdated,     // 동기화가 CONTENT_VERSION_MISMATCH로 거부됨(3.6). 클라이언트 업데이트가 필요하다. (추후 구현, 아래 참고)
+        ContentOutdated,     // 동기화가 CONTENT_VERSION_MISMATCH로 거부됨(3.6). 클라이언트 업데이트가 필요하다. (W3-5에서 구현, 3.6·5.8)
     }
 
     // 로그인한 세션. 동기화(3장)가 이걸로 요청에 토큰을 붙이고, 401이면 갱신한다.
@@ -726,19 +726,20 @@ namespace BlackHole.Net
 
 - 앱이 시작되면 타이틀을 바로 띄우고, 상태를 작은 텍스트로 표시한다.
 
-| 상태 | 표시 (예) |
+| 상태 | 표시 (W3-5 구현 문구, 한국어) |
 |---|---|
-| `Connecting` | "서버 연결 중…" |
-| `Online` | "온라인" |
+| `Connecting` | 표시 없음(타이틀은 로그인과 시작 동기화가 끝난 뒤에 열린다) |
+| `Online` | "서버에 연결되었습니다" |
 | `Offline(Disabled)` | 표시 없음 |
-| `Offline(Unreachable)` | "오프라인 — 기록은 다음 접속 때 반영됩니다" |
-| `Offline(CredentialsRejected)`, `Offline(ProtocolError)` | "오프라인 — 계정을 확인할 수 없습니다" |
-| `Offline(ContentOutdated)` | "오프라인 — 게임 데이터가 서버와 다릅니다. 업데이트가 필요합니다" (추후 구현) |
+| `Offline(Unreachable)` | "오프라인 - 기록은 다음 접속 때 반영됩니다" |
+| `Offline(CredentialsRejected)`, `Offline(ProtocolError)` | "오프라인 - 계정을 확인할 수 없습니다" |
+| `Offline(ContentOutdated)` | 연결 알림은 없다. 콘텐츠 버전 불일치 거부 알림(5.9)이 알린다 |
 
 - **로그인과 시작 동기화가 끝날 때까지 시작 버튼을 막는다.** 시작 동기화가 끝나야 진행도가 확정되기 때문이다. 동기화(3장)가 구현되기 전까지는 로그인이 끝나면(`Online` 또는 `Offline`) 푼다.
 - 시작 버튼을 막는 최대 시간은 `loginBudgetSeconds + syncTimeoutSeconds`(기본 18초)다. 서버에 닿지 않을 때는 대부분 연결 오류가 곧바로 와서 훨씬 짧다.
 
 - **W2-3 구현 범위(2026-10-14, A)**: 별도 타이틀 변경은 이번 범위가 아니다(클라이언트 폴리싱 담당). `GameBootstrap`이 콘텐츠·진행 저장을 읽은 뒤 **타이틀로 가기 전에** `IAuthSession.StartAsync()`를 기다린다(최대 `loginBudgetSeconds`, 대기 중 화면 표시 없음). 그래서 위 상태 텍스트 표시와 시작 버튼 막기는 구현하지 않았고, 결과는 `[인증]` 로그로만 남긴다.
+- **W3-5 구현(2026-10-20, A)**: 상태 알림을 구현했다. 타이틀에 계속 남는 상태 글자가 아니라 **잠깐 뜨는 알림**이다(5.9의 `FloatingNotice`). 영어 문구와 구현 규칙은 5.9에 있다. 시작 버튼 막기는 여전히 구현하지 않는다(로그인과 시작 동기화가 끝난 뒤에 타이틀로 가기 때문).
 - **W3-4 반영(2026-10-16)**: 같은 지점에서 로그인 뒤 시작 동기화(`SyncSender.SyncOnStartupAsync()`)까지 기다린 다음 타이틀로 간다(최대 `loginBudgetSeconds + syncTimeoutSeconds`). 서버를 쓰지 않는 실행(`Offline(Disabled)`)은 전송기를 만들지 않는다.
 
 ### 2.9 결정 사항 (2장, 확정)
@@ -896,7 +897,7 @@ W2-1·W2-2가 채울 것:
 
 - 검사 순서는 3.4의 순서, 타입별 규칙 안에서는 위 표의 순서이고, 처음 걸린 것 하나만 알린다.
 - 클라이언트는 `CONTENT_VERSION_MISMATCH`를 받으면 다른 거부와 같이 처리(대기 로그 폐기, 서버 진행도 채택)한 뒤, **이번 실행을 오프라인(`ContentOutdated`)으로 바꾼다.** 버전이 다른 채로 계속 보내면 로그마다 거부되어 진행도가 되돌아가기 때문이다.
-- **구현 시점**: 서버의 거부(`CONTENT_VERSION_MISMATCH`)는 이번 범위에서 구현한다. 클라이언트의 `ContentOutdated` 전환과 표시는 **추후 구현**이며, 그 전까지 클라이언트는 이 코드를 다른 거부와 똑같이 처리한다. `OfflineReason.ContentOutdated` 값은 W2 작업에서 추가하지 않아도 된다.
+- **구현**: 서버의 거부(`CONTENT_VERSION_MISMATCH`)는 W1에서 구현했다. 클라이언트의 `ContentOutdated` 전환과 안내는 **W3-5에서 구현했다**(2026-10-20, A). `SyncSender`가 이 코드를 받으면 다른 거부처럼 반영한 뒤 `IAuthSession.GoOffline(ContentOutdated)`로 이번 실행을 오프라인으로 바꾸고 더 보내지 않는다(5.8). 오프라인으로 진행한 로그는 쌓아 두지만, 콘텐츠 버전이 맞는 업데이트 뒤에 보내면 옛 `contentVersion` 때문에 다시 거부되어 서버 진행도로 돌아간다. 그래서 전용 안내(5.9)가 "업데이트 전의 오프라인 진행 내용은 업데이트 후 사라진다"고 알린다.
 - `message`는 사람이 읽는 설명이며 형식을 정하지 않는다.
 - `RUN_START`의 값 불일치는 거부가 아니므로 코드가 없다. 의심 표시의 사유는 4장에서 정한다.
 
@@ -1307,7 +1308,7 @@ public enum SuspicionReason {
 
 ## 5. 클라이언트 로그와 동기화
 
-클라이언트가 로그를 만들고(W3-1 C, W3-2 A), 진행도와 함께 저장하고(W3-3 A), 서버로 보내고 응답을 반영하는(W3-4 C, W3-5 C) 경계를 정한다.
+클라이언트가 로그를 만들고(W3-1 C, W3-2 A), 진행도와 함께 저장하고(W3-3 A), 서버로 보내고 응답을 반영하는(W3-4 C, W3-5 A) 경계를 정한다.
 
 ### 5.1 흐름
 
@@ -1496,6 +1497,7 @@ public enum SyncCallOutcome
 - 다음 seq는 `appliedThroughSeq + 1`로 맞춘다. 단, 남은 로그가 있으면 `마지막 남은 로그의 seq + 1`이다.
 - 서버 진행도로 덮어쓸 때는 진행 저장의 "큰 값 유지"(`ProgressSave.Capture`)를 거치지 않는다. 덮어쓴 값이 그대로 저장된다.
 - 아직 새 게임·계속을 고르기 전(타이틀)이면, 덮어쓴 값은 "계속"으로 이어 할 저장이 된다.
+- 업그레이드 화면이 열려 있을 때 거부로 덮어쓰면, 화면이 서버 값(Gold, 노드 상태)을 바로 다시 그린다(W3-5). 노드 트리가 이전 값으로 남지 않게 하기 위해서다. 전투·결산 중이면 다시 그리지 않아도 되고, 업그레이드 화면은 열 때마다 진행 상태에서 새로 그린다.
 - 판이 진행 중일 때 덮어쓰게 되면(온라인 중 거부), 판은 그대로 진행하고 결산은 덮어쓴 진행도 위에 더해진다. 그 결산 로그는 열린 판이 서버와 맞지 않아 다시 거부될 수 있다. 드문 경우라 수용한다.
 
 ### 5.8 전송 규칙 (`SyncSender`, W3-4)
@@ -1504,21 +1506,55 @@ public enum SyncCallOutcome
 - **온라인 중**: `LogAppended`마다 보낸다. 요청은 **동시에 하나만** 보낸다. 보내는 중에 쌓인 로그는 응답을 반영한 뒤 이어서 보낸다.
 - **나눠 보내기**(3.5): 한 요청에 최대 500개, 본문 1 MB(`SyncJson.Utf8Length`) 이하. 앞 요청의 응답을 반영한 뒤 다음 요청을 보낸다. 거부가 나오면 멈춘다(남은 로그는 `ApplyResponse`가 이미 지웠다).
 - **실패**: `Unreachable`, `Unauthorized`, `ProtocolError`면 로그를 그대로 두고 이번 실행은 더 보내지 않는다(계획서 D9). 오프라인 사유는 `IAuthSession.GoOffline`으로 알린다.
-- **`CONTENT_VERSION_MISMATCH`**: 지금은 다른 거부와 똑같이 처리한다(3.6, `ContentOutdated` 전환은 추후).
+- **`CONTENT_VERSION_MISMATCH`**: 다른 거부처럼 반영(대기 로그 폐기, 서버 진행도 채택, `RejectionReceived`)한 뒤 이번 실행을 오프라인(`ContentOutdated`)으로 바꾸고 더 보내지 않는다(W3-5, 3.6). 알림 처리기의 예외와 관계없이 전환한다. 전환 뒤 쌓이는 로그는 저장하되 보내지 않는다.
 - **구현 메모(W3-4, 2026-10-16)**:
   - `GoOffline`은 `SyncSender`만 부른다. `SyncApi`는 결과(`SyncCallOutcome`)만 돌려주고 실패 원인(상태 코드, 오류 코드)을 로그로 남긴다.
   - 오프라인 사유: `Unreachable` → `Unreachable`, 그 밖(`Unauthorized`, `ProtocolError`) → `ProtocolError`. 갱신에 실패한 `Unauthorized`는 `IAuthSession`이 이미 오프라인이고 처음 사유를 유지하므로 실제로 바뀌는 것은 "갱신한 뒤에도 401"인 경우뿐이다. `OfflineReason`에 값을 더하지 않는다(2.4).
   - 동기화 요청 타임아웃과 시작 대기 시간은 모두 `ServerSettings.SyncTimeoutSeconds`(10초, C11)다.
   - 응답의 `appliedThroughSeq`가 보낸 마지막 seq보다 커도 실패로 보지 않는다(로컬 장부가 서버보다 뒤처진 경우, 5.7의 다음 seq 규칙이 맞춘다). 거부 없이 반영했는데 보낸 첫 로그가 그대로 남으면 같은 요청을 되풀이하지 않도록 `ProtocolError`로 멈춘다.
   - 로그 하나가 1 MB를 넘으면 보낼 수 없으므로 `ProtocolError`다(결산 로그는 칸 2000개 상한에서도 1 MB에 크게 못 미친다).
-  - 거부를 반영하면 `RejectionReceived` 이벤트를 올린다(W3-5가 구독할 수 있다). 거부 기록 자체는 `ISyncStore.LastRejection`에 있다.
+  - 거부를 반영하면 `RejectionReceived` 이벤트를 올린다(W3-5가 구독한다). 거부 기록 자체는 `ISyncStore.LastRejection`에 있다.
 
-### 5.9 거부 알림 (W3-5)
+### 5.9 알림 (W3-5, A 구현)
 
-- `ISyncStore.LastRejection`이 있고 아직 보여 주지 않았으면, 타이틀 또는 업그레이드 화면에 들어갈 때 한 번 보여 주고 `MarkLastRejectionShown()`을 부른다.
-- 문구: **"서버에서 일부 기록을 받아들이지 않아 진행도를 서버 기준으로 맞췄습니다. ({종류}, {code})"**
-  - 종류: `RUN_START` 판 시작, `SETTLEMENT` 판 결산, `NODE_PURCHASE` 노드 구매, `RESET` 새 게임, 그 밖에는 기록.
-- 확인 버튼 하나짜리 기존 확인 창(`ConfirmPanel`)이나 작은 텍스트 중 화면에 맞는 것을 쓴다.
+타이틀·업그레이드 화면에서 `FloatingNotice`(코드로 만든 알림 글자 목록)로 알린다. 문구는 모두 UI 글자 표(`Assets/Data/Localization/UIText.csv`)에서 읽으며 한국어와 영어가 있다. 확인 창(`ConfirmPanel`)은 쓰지 않는다.
+
+**언제 판단하는가** (`ScreenFlow.Notice.cs`)
+
+- 타이틀 또는 업그레이드 화면에 들어갈 때.
+- 그 화면에 있는 동안 거부를 받았을 때(`SyncSender.RejectionReceived`).
+- 연결 상태가 바뀌었을 때(`IAuthSession.StateChanged`). 플레이 중 연결이 끊기는 경우를 포함한다.
+- 현재 화면이 타이틀이나 업그레이드가 아니면(전투, 결산, 엔딩) 띄우지 않는다. 다음에 두 화면에 들어갈 때 판단한다.
+- 업그레이드 화면에서 거부를 받으면 알리기 전에 서버 값으로 Gold와 노드 상태를 다시 그린다(5.7).
+
+**연결 알림** (2.8의 표)
+
+- 알릴 상태가 바뀌었을 때 한 번 보인다(`ConnectionNoticeTracker`). 처음 확인할 때는 지금 상태를 알리고, 이미 알린 상태는 타이틀로 돌아오거나 업그레이드에 들어와도 다시 알리지 않는다. 플레이 중 온라인에서 오프라인으로 바뀌면 다음 확인 때 한 번 알린다.
+- 온라인이고 같이 알릴 거부가 있으면 "서버에 연결되었습니다"는 건너뛴다(연결은 됐지만 진행도가 서버 기준으로 바뀐 것이 알릴 일이다).
+- 문구와 표시 시간:
+
+| 상태 | 한국어 | English | 시간 |
+|---|---|---|---|
+| `Online` | 서버에 연결되었습니다 | Connected to the server | 2.5초 |
+| `Offline(Unreachable)` | 오프라인 - 기록은 다음 접속 때 반영됩니다 | Offline - your records will be synced the next time you connect | 5초 |
+| `Offline(CredentialsRejected)`, `Offline(ProtocolError)` | 오프라인 - 계정을 확인할 수 없습니다 | Offline - your account could not be verified | 5초 |
+
+**거부 알림**
+
+- `ISyncStore.LastRejection`이 있고 아직 보여 주지 않았으면(`!LastRejectionShown`) 한 번 보이고, 보이는 순간 `MarkLastRejectionShown()`을 부른다. 눌러서 닫는 창이 아니므로 보이는 순간을 "보여 줬다"로 치며, 저장되어 다음 실행에서 다시 뜨지 않는다.
+- 문구(5초):
+  - 한국어: **"서버에서 일부 기록을 받아들이지 않아 진행도를 서버 기준으로 맞췄습니다. ({종류}, {code})"**
+  - English: **"The server rejected some records, so your progress was synced to the server. ({종류}, {code})"**
+  - 종류: `RUN_START` 판 시작(Run start), `SETTLEMENT` 판 결산(Run settlement), `NODE_PURCHASE` 노드 구매(Node purchase), `RESET` 새 게임(New game), 그 밖에는 기록(Record). `code`는 번역하지 않고 그대로 보인다.
+- **콘텐츠 버전 불일치**(`CONTENT_VERSION_MISMATCH`)는 전용 문구를 쓰며 종류와 코드를 넣지 않는다(9초). 이 경우 이번 실행은 오프라인(`ContentOutdated`)으로 바뀐다(5.8). 연결 알림은 따로 없다.
+  - 한국어: **"게임 데이터가 서버와 달라 오프라인으로 진행됩니다. 업데이트 전의 오프라인 진행 내용은 업데이트 후 사라집니다. 최신 버전으로 업데이트해 주세요."**
+  - English: **"Your game data does not match the server, so the game now continues offline. Progress made offline before you update will be lost after the update. Please update to the latest version."**
+
+**표시 방식** (`FloatingNotice`)
+
+- 알림을 세로 목록으로 한꺼번에 보인다(먼저 온 것이 위, 최대 4개). 넘치면 가장 오래된 알림부터 사라진다.
+- 알림마다 제 수명(나타남 0.3초, 머묾, 사라짐 0.8초)이 있고, 사라지면 아래 알림이 위로 올라온다. 같은 글자가 다시 오면 쌓지 않고 수명만 새로 시작한다.
+- 높이는 글자 줄 수에 맞춘다. 입력을 가로채지 않으며 화면 전환 덮개 아래 층에 있다.
 
 ### 5.10 저장 포맷 2 (W3-3, A)
 
@@ -1562,6 +1598,11 @@ public enum SyncCallOutcome
 | C24 | 진행도와 대기 로그를 `progress.json` 한 파일에 함께 저장한다(포맷 2) | 한 번의 원자적 쓰기로 둘이 어긋나지 않는다 |
 | C25 | 거부가 없으면 남은 로그가 있는 동안 서버 진행도로 덮어쓰지 않는다 | 응답을 기다리는 동안 생긴 로그의 효과를 잃지 않는다 |
 | C26 | 전송은 동시에 하나만, 나눈 요청은 앞 응답을 반영한 뒤 다음을 보낸다 | seq 순서와 거부 후 멈춤을 단순하게 보장한다 |
+| C43 | 알림은 확인 창이 아니라 잠깐 뜨는 글자 목록(`FloatingNotice`)이고, 줄을 세우지 않고 세로로 한꺼번에 보인다(최대 4개) | 하나씩 차례로 보이면 오래 걸린다. 알림마다 수명이 있고 사라지면 아래가 올라온다 |
+| C44 | 거부 알림은 글자가 보이는 순간 "보여 줬다"로 기록한다 | 눌러서 닫는 창이 아니다. 저장되어 다음 실행에서 다시 뜨지 않는다 |
+| C45 | 연결 알림은 알릴 상태가 바뀌었을 때 한 번 보인다. 온라인이고 같이 알릴 거부가 있으면 "연결되었습니다"는 건너뛴다 | 플레이 중 연결 끊김도 한 번 알리고, 같은 상태를 반복해 알리지 않는다 |
+| C46 | 콘텐츠 버전 불일치는 거부 알림이 전용 문구로 알리고, 이번 실행은 오프라인(`ContentOutdated`)으로 바꾼다. 연결 알림은 따로 없다 | 버전이 다르면 모든 로그가 거부되어 진행도가 매번 되돌아간다(3.6). 안내에 "업데이트 전의 오프라인 진행은 업데이트 후 사라진다"를 담는다 |
+| C47 | 업그레이드 화면에서 거부로 덮어쓰면 그 자리에서 Gold와 노드 상태를 다시 그린다 | 5.7이 정하지 않았던 경우(W3-4의 알려진 한계)를 정했다 |
 | C27 | 결산 시간 검사(S8)의 허용 오차는 상한 + 0.01초 + 상한의 0.01%로 한다(W1-6) | 서버 내부 값이다. 클라이언트는 판 시간을 제한 시간 안으로 자르므로 float 누적 오차만 허용하고, 실측 보정은 골든 로그(W4-2b)에서 확인한다 |
 
 ### 5.13 산출물
@@ -1574,6 +1615,9 @@ public enum SyncCallOutcome
 | `SyncJson`(5.5) | `Assets/Scripts/Net/SyncJson.cs` | **구현 완료** |
 | `PendingLog`, `ISyncStore`, `SyncApplyOutcome`, `ISyncApi`, `SyncCallResult`(5.6) | `Assets/Scripts/Net/` | 완료 |
 | `SyncApi`(`ISyncApi` 구현), `SyncSender`(5.8), `GameBootstrap` 연결 | `Assets/Scripts/Net/SyncApi.cs`, `SyncSender.cs`, `Battle/GameBootstrap.cs` | **완료**(W3-4, 클라이언트 `feat/asyncServer`) |
+| `FloatingNotice`, `ScreenFlow.Notice.cs`(5.9의 알림 표시와 판단) | `Assets/Scripts/UI/Screens/FloatingNotice.cs`, `UI/Flow/ScreenFlow.Notice.cs` | **완료**(W3-5, A, 클라이언트 `feat/sync-rejection-notice`) |
+| `RejectionKinds`, `ConnectionNoticeKeys`, `ConnectionNoticeTracker`, `OfflineReason.ContentOutdated`와 `SyncSender`의 전환 | `Assets/Scripts/Net/` | **완료**(W3-5, A) |
+| 알림 문구(ko-KR, en-US) | `Assets/Data/Localization/UIText.csv` | **완료**(W3-5, A) |
 | `KillBucket`, `KillBucketCount`(5.3) | `Assets/Scripts/Core/Enemies/KillBucket.cs` | 타입 완료. 세는 일과 `BattleRawData` 속성은 W3-1(**완료**, PR #88. 검증은 `Editor/SyncFixtures/KillLedgerCheck`) |
 | `RunStartInfo`(5.3) | `Assets/Scripts/Core/Battle/Session/RunStartInfo.cs` | **완료**. `GameSession.StartInfo`를 연결했다(W3-2) |
 | `BlackHole.Sync` 어셈블리, `SyncLogFactory` | `Assets/Scripts/Sync/` | **완료**. 4종 로그(구매, 새 게임, 판 시작, 결산)를 만들고 `ScreenFlow`의 4지점에서 남긴다(W3-2). 결산의 칸별 값은 W3-1이 채운다(완료) |
@@ -1585,5 +1629,6 @@ public enum SyncCallOutcome
 | 테스트 | `Assets/Tests/Save/SyncLedgerTests.cs`(12개), `ProgressStoreTests.cs`(19개) | 작성. 5.7 규칙, 포맷 1 로드, 쓰기 실패, 깨진 `Sync`, 거부·덮어쓰기, 타이틀 응답 |
 | 테스트 | `Assets/Tests/Net/SyncSenderTests.cs`(27개), `SyncApiTests.cs`(17개), `SyncSenderStoreTests.cs`(3개) | 통과(W3-4). 가짜 `ISyncApi`·실제 장부로 5.8 규칙 전체, 가짜 전송으로 요청 모양·401 재시도·응답별 결과, 실제 `ProgressStore`와 저장·다음 실행 연결 |
 | 테스트 | `Assets/Tests/Net/SyncLocalServerTests.cs`(1개, Explicit) | 로컬 서버로 통과(W3-4, M1 시나리오) |
+| 테스트 | `Assets/Tests/Net/RejectionKindsTests.cs`(8개), `ConnectionNoticeKeysTests.cs`(7개), `ConnectionNoticeTrackerTests.cs`(7개), `SyncSenderTests.cs`(콘텐츠 버전 불일치 4개, 전체 30개) | 통과(W3-5, Editor 전체 222개). 콘텐츠 버전 불일치는 로컬 서버로도 확인(`Offline(ContentOutdated)` 전환, 진행도 복구, 안내 표시) |
 
 - 응답의 산 노드 DTO 이름은 `ProgressNodeDto`다(통계 전송의 `BlackHole.Analytics.NodeRankDto`와 겹치지 않게).
