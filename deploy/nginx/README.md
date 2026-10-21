@@ -104,15 +104,29 @@ rm -rf ~/repo
 | `curl.exe -sk -o NUL -w "%{http_code}" -H "Host: example.invalid" https://<도메인>/` | `000`(응답 없이 연결을 닫음. `01-default-reject.conf`의 `return 444`) |
 | `curl.exe -k https://<탄력적 IP>/` | TLS 핸드셰이크 실패(종료 코드 35). SNI 없는 IP 접속은 거부된다 |
 
-요청 빈도 제한은 **계정이 생기지 않는 요청**으로 확인한다. 빈 본문으로 `register`를 호출하면 앱이 검증에서 거부하므로 DB에는 아무것도 쓰이지 않지만, Nginx는 요청 횟수를 센다.
+요청 빈도 제한은 두 가지로 확인한다(2026-10-19 운영 서버에서 확인).
 
-```powershell
-1..40 | ForEach-Object { curl.exe -s -o NUL -w "%{http_code} " -X POST -H "Content-Type: application/json" -d "{}" https://<도메인>/api/v1/auth/guest/register }
+**① 인증 경로 전체(분당 60회, 순간 30회): 부작용 없음.** 잘못된 리프레시 토큰으로 `refresh`를 호출하면 `401`만 돌려주고 DB에는 아무것도 쓰이지 않는다.
+
+```bash
+for i in $(seq 1 45); do curl -s -o /dev/null -w '%{http_code} ' -X POST -H 'Content-Type: application/json' -d '{"refreshToken":"x"}' https://<도메인>/api/v1/auth/refresh; done; echo
 ```
 
-- 앞의 약 21개(평상시 1 + burst 20)는 앱의 거부 응답(`4xx`)이고, 그 뒤로는 `429`가 나온다. 정확한 개수는 요청 간격에 따라 몇 개 다를 수 있다.
-- 다른 경로가 막히지 않는지도 본다: `curl.exe -s -o NUL -w "%{http_code}" https://<도메인>/actuator/health`가 계속 `200`이어야 한다.
-- 시험으로 걸린 제한은 약 6초(분당 10회) 뒤부터 풀리기 시작한다. 거부 기록은 서버의 `sudo grep limiting /var/log/nginx/error.log | tail`로 본다.
+(Git Bash 등 bash에서 실행한 명령이다. PowerShell은 JSON의 따옴표 처리가 달라서 그대로 쓰면 깨질 수 있다.)
+
+앞의 약 31~38개는 `401`이고 그 뒤로 `429`가 섞여 나온다. 요청 간격 동안 한도가 조금씩 풀려서 정확한 개수는 달라진다.
+
+**② `guest/register`(분당 10회, 순간 20회): 시험 계정이 생긴다.** 앱은 **빈 본문 `{}`도 받아서 게스트 계정을 만든다**(201). 거부되지 않으므로 이 시험은 **테스트 단계에서만, 만들어진 계정을 나중에 지워도 될 때** 한다.
+
+```bash
+for i in $(seq 1 40); do curl -s -o /dev/null -w '%{http_code} ' -X POST -H 'Content-Type: application/json' -d '{}' https://<도메인>/api/v1/auth/guest/register; done; echo
+```
+
+앞의 21개(평상시 1 + burst 20)가 `201`이고 그 뒤로 `429`가 나온다. 응답 본문의 `guestSecret`은 화면에 남기지 않도록 위처럼 `-o /dev/null`로 버린다. 만들어진 계정은 런북 6장의 초기화 절차로 지운다.
+
+- 다른 경로가 막히지 않는지도 본다: 제한이 걸린 직후에도 `curl.exe -s -o NUL -w "%{http_code}" https://<도메인>/actuator/health`는 `200`, `/api/v1/me`(토큰 없음)는 `401`이어야 한다.
+- 시험으로 걸린 제한은 약 6초(분당 10회) 뒤부터 풀리기 시작한다(실측: 70초 뒤 정상). 거부 기록은 서버의 `sudo grep limiting /var/log/nginx/error.log | tail`로 본다.
+- 한도에 걸린 요청은 **더 엄격한 규칙(register)에서 먼저 거부되어 인증 경로 전체 한도를 소모하지 않는다.**
 
 끝으로 클라이언트로 로그인과 게임 진행이 되는지 확인한다.
 

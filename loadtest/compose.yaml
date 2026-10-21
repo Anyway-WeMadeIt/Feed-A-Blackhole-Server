@@ -1,0 +1,74 @@
+# 로컬 부하 테스트 환경(서버 코드의 병목을 찾는 용도). 운영 환경의 성능을 그대로 재현하지는 않는다.
+# 운영과 같은 Dockerfile로 앱 이미지를 만들고, 자원 제한으로 운영의 크기(EC2 t3.small, RDS db.t4g.micro)에 가깝게 맞춘다.
+# 비밀번호와 JWT 키는 이 로컬 시험 전용 값이다. 운영 값과 무관하다.
+#
+# 실행: loadtest/README.md
+name: blackhole-loadtest
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: loadtest-root
+      MYSQL_DATABASE: feedablackhole
+      MYSQL_USER: blackhole
+      MYSQL_PASSWORD: loadtest-pass
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # RDS db.t4g.micro(메모리 1GiB)의 기본값에 가깝게: 연결 수 상한 약 85, 버퍼 풀은 메모리의 일부
+      - --max-connections=85
+      - --innodb-buffer-pool-size=512M
+    mem_limit: 1g
+    # 크레딧이 있을 때 약 2 vCPU, 바닥나면 약 0.2 vCPU(기준 성능 10%). DB_CPUS=0.2로 바닥난 상태를 흉내 낸다.
+    cpus: ${DB_CPUS:-2}
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-ploadtest-root"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build:
+      # 다른 소스(예: 개선 전 커밋의 작업 트리)로 빌드해 비교할 때 APP_SRC로 바꾼다.
+      context: ${APP_SRC:-..}
+      dockerfile: Dockerfile
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/feedablackhole
+      DB_USERNAME: blackhole
+      DB_PASSWORD: loadtest-pass
+      JWT_SECRET: local-loadtest-only-secret-0123456789abcdef
+      # JVM 옵션 실험용(예: -XX:+UseG1GC). 비워 두면 JVM 기본값이다.
+      JAVA_TOOL_OPTIONS: ${APP_JAVA_OPTS:-}
+    # t3.small(2GiB)에서 OS·Nginx·Docker 몫을 뺀 크기. APP_CPUS=0.4로 바닥난 상태(기준 성능 20%×2)를 흉내 낸다.
+    mem_limit: 1536m
+    cpus: ${APP_CPUS:-2}
+    ports:
+      - "18080:8080"
+
+  k6:
+    image: grafana/k6
+    profiles: ["k6"]
+    depends_on:
+      - app
+    volumes:
+      # 저장소 전체를 읽기 전용으로 마운트한다(시나리오와 골든 캠페인 로그를 읽는다).
+      - ..:/work:ro
+    environment:
+      BASE_URL: http://app:8080
+      SCENARIO: ${SCENARIO:-smoke}
+      VUS: ${VUS:-20}
+      SYNC_PER_MIN: ${SYNC_PER_MIN:-20}
+      THINK_SCALE: ${THINK_SCALE:-1}
+      RATES: ${RATES:-5,10,20,40,80}
+      STEP: ${STEP:-1m}
+      RAMP: ${RAMP:-2m}
+      HOLD: ${HOLD:-5m}
+      ABUSE_RATE: ${ABUSE_RATE:-10}
+      BATCH: ${BATCH:-50}
+      DURATION: ${DURATION:-3m}
+    command: ["run", "/work/loadtest/k6/blackhole.js"]

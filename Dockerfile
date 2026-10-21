@@ -22,5 +22,8 @@ USER blackhole
 
 EXPOSE 8080
 # 컨테이너 메모리의 70%를 힙으로 쓰고, 메모리 부족이면 멈춰서 재시작 정책이 다시 띄우게 한다.
+# GC는 Serial로 고정한다. 기본값은 메모리가 약 1.8GiB 이상이면 G1인데(운영은 컨테이너 제한 없이 호스트 2GiB를 본다), 이 규모의 힙에서는
+# G1이 같은 부하에서 CPU를 20% 넘게 더 썼다(부하 테스트, loadtest/README.md). 부하 테스트는 컨테이너 1.5GiB 제한이라 기본이 Serial이었으므로,
+# 이렇게 두면 운영도 시험한 구성과 같아진다.
 # exec 형식이라 java가 PID 1로 종료 신호(SIGTERM)를 직접 받아 graceful shutdown이 동작한다.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=70", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-XX:MaxRAMPercentage=70", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/app.jar"]

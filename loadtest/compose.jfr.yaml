@@ -1,0 +1,9 @@
+# 앱의 CPU 프로파일을 JFR(Java Flight Recorder)로 남기는 덮어쓰기 설정. compose.yaml과 함께 쓴다.
+#   docker compose -f compose.yaml -f compose.jfr.yaml up -d app
+# 앱을 정상 종료(docker compose stop app)하면 /tmp/rec.jfr이 쓰이고, docker compose cp app:/tmp/rec.jfr . 로 꺼낸다.
+# 읽기는 JDK의 jfr 도구로 한다(예: jfr print --events jdk.ExecutionSample rec.jfr).
+services:
+  app:
+    environment:
+      JAVA_TOOL_OPTIONS: -XX:StartFlightRecording=filename=/tmp/rec.jfr,settings=profile,dumponexit=true
+    stop_grace_period: 40s
