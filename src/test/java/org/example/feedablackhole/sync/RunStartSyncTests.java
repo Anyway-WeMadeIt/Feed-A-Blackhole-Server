@@ -17,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -61,6 +62,9 @@ class RunStartSyncTests {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     // 서버 계산과 같은 판 시작은 의심 없이 열린다(battle_run은 OPEN, 의심 사유 없음, 계정의 의심 표시 0)
     @Test
@@ -205,9 +209,11 @@ class RunStartSyncTests {
         return new Account(((Number) JsonPath.read(me, "$.accountId")).longValue(), token);
     }
 
-    // 결산 로그를 거치지 않고, 진행도의 Gold를 DB에 직접 정한다
+    // 결산 로그를 거치지 않고, 진행도의 Gold를 DB에 직접 정한다.
+    // 풀이 auto-commit을 꺼 두므로 트랜잭션 안에서 써야 커밋된다.
     private void giveGold(Account account, long gold) {
-        jdbcTemplate.update("UPDATE player_progress SET gold = ? WHERE account_id = ?", gold, account.id);
+        transactionTemplate.executeWithoutResult(status ->
+                jdbcTemplate.update("UPDATE player_progress SET gold = ? WHERE account_id = ?", gold, account.id));
     }
 
     // 계정에 남은 의심 표시의 수(의심이 있는 판 하나당 1)
