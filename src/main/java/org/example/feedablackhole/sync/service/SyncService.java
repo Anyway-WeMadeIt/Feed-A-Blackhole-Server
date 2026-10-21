@@ -18,7 +18,7 @@ import org.example.feedablackhole.sync.handler.LogHandler;
 import org.example.feedablackhole.sync.handler.SyncContext;
 import org.example.feedablackhole.sync.log.RejectCode;
 import org.example.feedablackhole.sync.repository.BattleRunRepository;
-import org.example.feedablackhole.sync.repository.SyncLogRecordRepository;
+import org.example.feedablackhole.sync.repository.SyncLogBatchWriter;
 import org.example.feedablackhole.sync.service.LogParser.ParsedLog;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,7 +38,7 @@ public class SyncService {
     private final PlayerProgressRepository progressRepository;
     private final PlayerNodeRankRepository nodeRankRepository;
     private final BattleRunRepository runRepository;
-    private final SyncLogRecordRepository logRepository;
+    private final SyncLogBatchWriter logWriter;
     private final LogParser parser;
     private final LogHandlerRegistry handlers;
     private final ServerContentVersion contentVersion;
@@ -85,7 +85,7 @@ public class SyncService {
             }
         }
 
-        logRepository.saveAll(records);
+        logWriter.insertAll(progress.getAccountId(), records);
         progressRepository.flush(); // flush 해야 auditing이 일어나 엔티티의 updateAt이 갱신됨
         // 그래야 응답을 조립할 때 올바른 updateAt을 읽을 수 있음
 
