@@ -132,7 +132,7 @@ for i in $(seq 1 40); do curl -s -o /dev/null -w '%{http_code} ' -X POST -H 'Con
 
 ## 앱으로의 연결 재사용(keepalive)
 
-`blackhole.conf`의 `upstream blackhole_app { keepalive 64; }`와 `proxy_http_version 1.1`, `proxy_set_header Connection ""`는 **Nginx → 앱 구간의 연결을 재사용**하게 한다. 운영 부하 테스트(2026-10-21)에서 이것이 없을 때 초당 약 330건에서 서버 CPU가 포화했다(`vmstat` 유휴 1~12%).
+`blackhole.conf`의 `upstream blackhole_app { keepalive 64; }`와 `proxy_http_version 1.1`, `proxy_set_header Connection ""`는 **Nginx → 앱 구간의 연결을 재사용**하게 한다. 운영 부하 테스트(2026-10-21)에서 이것이 없을 때 초당 320~400건 사이에서 서버 CPU가 포화했다(400건/초에서 `vmstat` 유휴 1~12%).
 
 - 원인: Nginx가 요청마다 앱으로 새 TCP 연결을 만들었다. `TIME_WAIT`가 8,194개 쌓이고, 앱 포트(`127.0.0.1:8080`)를 열어 주는 Docker의 사용자 공간 프록시 `docker-proxy`가 CPU의 25%를 썼다(`java` 112%, 커널 시스템 시간 17~25%).
 - 적용 후(각 1회 측정): 부하 중 `TIME_WAIT` 253~643개, `docker-proxy` 6%, 초당 320건의 p95가 231~323ms → 105ms, 초당 400건에서 밀린 요청 738~1,162건 → 0건(서버 유휴 58%).
