@@ -12,7 +12,7 @@
 
 | 파일 | 둘 위치(서버) | 역할 |
 | --- | --- | --- |
-| [blackhole.conf](blackhole.conf) | `/etc/nginx/conf.d/blackhole.conf` | 도메인의 요청을 앱으로 프록시한다. **인증서 적용 전 모양**이다 |
+| [blackhole.conf](blackhole.conf) | `/etc/nginx/conf.d/blackhole.conf` | 도메인의 요청을 앱으로 프록시한다(앱으로의 연결은 keepalive로 재사용). **인증서 적용 전 모양**이다 |
 | [00-hardening.conf](00-hardening.conf) | `/etc/nginx/conf.d/00-hardening.conf` | 응답 헤더에서 Nginx 버전을 숨긴다(`server_tokens off`) |
 | [01-default-reject.conf](01-default-reject.conf) | `/etc/nginx/conf.d/01-default-reject.conf` | 우리 도메인이 아닌 이름·IP의 HTTPS 요청을 앱까지 넘기지 않고 거부한다 |
 | [02-rate-limit.conf](02-rate-limit.conf) | `/etc/nginx/conf.d/02-rate-limit.conf` | 인증 경로(`/api/v1/auth/`)의 요청 빈도를 IP별로 제한한다. 한도를 넘으면 `429`를 돌려준다 |
@@ -130,6 +130,26 @@ for i in $(seq 1 40); do curl -s -o /dev/null -w '%{http_code} ' -X POST -H 'Con
 
 끝으로 클라이언트로 로그인과 게임 진행이 되는지 확인한다.
 
+## 앱으로의 연결 재사용(keepalive)
+
+`blackhole.conf`의 `upstream blackhole_app { keepalive 64; }`와 `proxy_http_version 1.1`, `proxy_set_header Connection ""`는 **Nginx → 앱 구간의 연결을 재사용**하게 한다. 운영 부하 테스트(2026-10-21)에서 이것이 없을 때 초당 320~400건 사이에서 서버 CPU가 포화했다(400건/초에서 `vmstat` 유휴 1~12%).
+
+- 원인: Nginx가 요청마다 앱으로 새 TCP 연결을 만들었다. `TIME_WAIT`가 8,194개 쌓이고, 앱 포트(`127.0.0.1:8080`)를 열어 주는 Docker의 사용자 공간 프록시 `docker-proxy`가 CPU의 25%를 썼다(`java` 112%, 커널 시스템 시간 17~25%).
+- 적용 후(각 1회 측정): 부하 중 `TIME_WAIT` 253~643개, `docker-proxy` 6%, 초당 320건의 p95가 231~323ms → 105ms, 초당 400건에서 밀린 요청 738~1,162건 → 0건(서버 유휴 58%).
+- certbot이 고치는 줄이 아니라 `location` 안의 줄과 `upstream` 블록이라 certbot 갱신과 충돌하지 않는다.
+
+**이미 돌고 있는 서버에 적용하기**(백업 → 수정 → 문법 검사 → 무중단 반영, 검사가 실패하면 복원):
+
+```bash
+F=/etc/nginx/conf.d/blackhole.conf
+sudo cp -p $F /etc/nginx/blackhole.conf.bak
+sudo sed -i 's|proxy_pass http://127.0.0.1:8080;|proxy_pass http://blackhole_app;\n        proxy_http_version 1.1;\n        proxy_set_header Connection "";|' $F
+{ printf 'upstream blackhole_app {\n    server 127.0.0.1:8080;\n    keepalive 64;\n    keepalive_timeout 30s;\n}\n\n'; sudo cat $F; } | sudo tee /tmp/blackhole.new > /dev/null && sudo cp /tmp/blackhole.new $F
+sudo nginx -t && sudo systemctl reload nginx || sudo cp -p /etc/nginx/blackhole.conf.bak $F
+```
+
+확인: 부하 중 `ss -tan state time-wait | wc -l`가 수백 개 이하인지 본다. 되돌리려면 백업(`/etc/nginx/blackhole.conf.bak`)을 `conf.d/blackhole.conf`로 복사하고 `nginx -t && reload`한다. 이 서버는 2026-10-21에 이 방법으로 적용했고 백업은 `/etc/nginx/blackhole.conf.bak-loadtest`에 있다(문제가 없으면 지워도 된다).
+
 ## 운영 메모
 
 - **80 포트와 HTTP 서버 블록을 닫지 않는다.** 인증서 갱신이 HTTP-01 방식(80 포트로 소유 확인)이다.
@@ -160,6 +180,7 @@ JWT 발급자(`app.jwt.issuer`)는 URL이 아니라 고정 문자열이라 도�
 ## 이 설정이 다루지 않는 것
 
 - 여러 IP를 쓰는 분산 공격: 요청 빈도 제한은 한 IP의 반복 호출만 막는다. IPv6 사용자가 주소를 바꿔 가며 우회하는 경우도 막지 못한다.
+- `docker-proxy` 제거(컨테이너를 호스트 네트워크로 띄우거나 Docker의 `userland-proxy`를 끔): keepalive로 CPU 몫이 25% → 6%로 줄어 우선순위를 낮췄다. Docker 재시작이 필요한 더 큰 변경이다.
 - 로그 전송, 알람: 운영 점검 단계에서 다룬다.
 
 ## 요청 빈도 제한 메모

@@ -21,7 +21,7 @@
 | 이미지 | ECR `feedablackhole-server` | 태그 = 커밋 SHA 앞 12자(변경 불가). 최근 10개 유지 |
 | 설정·비밀값 | Parameter Store `/blackhole/` 아래 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET` | 모두 SecureString |
 | 서버 상태 파일 | `/var/lib/blackhole/last-good-tag` | 마지막으로 헬스체크를 통과한 태그(롤백 대상) |
-| 알림 | SNS `blackhole-alerts`(이메일), CloudWatch 알람 7개, 외부 가동 감시(UptimeRobot, 5분 간격) | 아래 2장 |
+| 알림 | SNS `blackhole-alerts`(이메일), CloudWatch 알람 8개, 외부 가동 감시(UptimeRobot, 5분 간격) | 아래 2장 |
 
 ### 서버에 접속하는 법
 
@@ -62,8 +62,9 @@ curl -s -o /dev/null -w '%{http_code}\n' https://<도메인>/actuator/health
 | `blackhole-ec2-cpu-high` | CPU 80% 초과가 15분 지속 | `docker stats --no-stream`, Nginx 접근 로그에서 요청이 몰렸는지 본다 |
 | `blackhole-ec2-cpu-credit-low` | CPU 크레딧 잔량 50 미만. 바닥나면 `t3.small`이 기준 성능(약 20%)으로 조여져 느려진다(죽지는 않음) | CPU가 계속 높은 원인을 찾는다. 해소가 안 되면 크레딧 모드 변경이나 한 단계 큰 인스턴스를 검토 |
 | `blackhole-rds-free-storage-low` | DB 여유 공간 2GiB 미만 | 데이터가 늘었는지 확인하고 스토리지를 늘린다(콘솔 → 수정) |
-| `blackhole-rds-freeable-memory-low` | DB 여유 메모리 100MiB 미만이 15분 지속(1GiB 인스턴스) | 연결 수와 무거운 쿼리를 본다. 지속되면 한 단계 큰 인스턴스를 검토 |
+| `blackhole-rds-freeable-memory-low` | DB 여유 메모리 50MiB 미만이 15분 지속(1GiB 인스턴스). 평소 값이 100MiB 안팎이라 2026-10-21에 100MiB에서 낮췄다 | 연결 수와 무거운 쿼리를 본다. 지속되면 한 단계 큰 인스턴스를 검토 |
 | `blackhole-rds-cpu-credit-low` | DB CPU 크레딧 잔량 30 미만 | 위 `cpu-high`와 같이 부하 원인을 본다 |
+| `blackhole-rds-burst-balance-low` | DB 스토리지(gp2)의 버스트 크레딧(`BurstBalance`)이 30% 미만. 바닥나면 IOPS가 보장치 100으로 묶여 DB가 크게 느려진다 | 최근 쓰기 부하(부하 테스트, 대량 요청)를 확인하고 줄인다. 회복은 시간당 약 6~7%라 바닥난 뒤에는 수 시간이 걸린다. 반복되면 gp3 변경을 검토(계획서 7단계) |
 | `blackhole-rds-connections-high` | DB 연결이 50을 넘는 상태가 10분 지속 | 앱 컨테이너 재시작으로 연결을 정리해 보고, 반복되면 풀 크기와 요청 패턴을 점검 |
 
 - 알람이 `OK`로 돌아오면 복귀 메일이 한 번 더 온다.
@@ -87,7 +88,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://<도메인>/actuator/health
 | 크레딧과 비용 | 콘솔 Billing → 크레딧, Cost Explorer. 크레딧 잔액은 8장의 명령으로도 본다 | 잔액과 이번 달 사용량이 예상 범위인지. 소진 예상 시점은 8장 |
 | 인증서 만료일 | EC2에서 `sudo certbot certificates` | **30일 이상** 남아 있어야 한다. 갱신이 실패해도 메일이 오지 않는다 |
 | 디스크 | `df -h /`, `docker system df` | 루트 사용률이 70%를 넘지 않게. 이미지는 `deploy.sh`가 7일 지난 미사용 이미지를 지운다 |
-| 알람 상태 | CloudWatch → 알람 | 7개 모두 `OK` |
+| 알람 상태 | CloudWatch → 알람 | 8개 모두 `OK` |
 | 가동률 | UptimeRobot 대시보드 | 끊김 기록이 없는지 |
 | 최근 배포 | GitHub Actions → Deploy | 마지막 실행이 성공인지 |
 
@@ -386,6 +387,7 @@ aws freetier get-account-plan-state --region us-east-1
 ## 9. 알려진 한계와 후속 과제
 
 - **서버 1대**라 배포·재부팅 때 약 20초 끊긴다. DB도 단일 AZ다.
+- **DB 스토리지가 gp2 20GiB라 보장 IOPS가 100뿐이다.** 그 이상은 버스트 크레딧(`BurstBalance`)을 쓰고, 바닥나면 DB가 크게 느려진다. 요청 하나가 쓰기 IOPS를 약 7~12 쓰므로 오래 유지할 수 있는 처리량은 초당 약 8~10건(계속 활동하는 사용자 약 85~100명)이다. **부하 테스트는 크레딧을 쓰니 같은 날 반복하지 않고, 시험 전후의 `BurstBalance`를 기록한다.** `blackhole-rds-burst-balance-low` 알람(30% 미만)이 있다. gp3 변경은 계획서 7단계의 후속 과제다.
 - **자동 백업은 1일**뿐이다. 중요한 변경 전에는 수동 스냅샷을 만든다.
 - **이전 컨테이너 로그는 교체와 함께 사라진다.** 실제 사용자가 생기면 CloudWatch Logs로 컨테이너 로그를 보내는 것을 검토한다.
 - 인증서 **갱신 실패 알림이 없다.** 3장의 만료일 점검으로 대신한다.
@@ -422,5 +424,26 @@ aws cloudwatch put-metric-alarm --region ap-northeast-2 --alarm-name blackhole-e
   --alarm-actions <SNS 주제 ARN> --ok-actions <SNS 주제 ARN>
 ```
 
+RDS 알람 두 가지도 같은 모양이다(2026-10-21 현재 값). 임계값의 단위에 주의한다: 여유 메모리는 **바이트**(50MiB = `52428800`), `BurstBalance`는 퍼센트다.
+
+```bash
+# 여유 메모리 50MiB 미만이 15분 지속
+aws cloudwatch put-metric-alarm --region ap-northeast-2 --alarm-name blackhole-rds-freeable-memory-low \
+  --alarm-description "RDS freeable memory below 50 MiB for 15 min" \
+  --namespace AWS/RDS --metric-name FreeableMemory --dimensions Name=DBInstanceIdentifier,Value=blackhole-db \
+  --statistic Average --period 300 --evaluation-periods 3 --datapoints-to-alarm 3 \
+  --threshold 52428800 --comparison-operator LessThanThreshold --treat-missing-data notBreaching \
+  --alarm-actions <SNS 주제 ARN> --ok-actions <SNS 주제 ARN>
+
+# gp2 버스트 크레딧 30% 미만(5분 최저값)
+aws cloudwatch put-metric-alarm --region ap-northeast-2 --alarm-name blackhole-rds-burst-balance-low \
+  --alarm-description "RDS gp2 burst balance below 30 percent" \
+  --namespace AWS/RDS --metric-name BurstBalance --dimensions Name=DBInstanceIdentifier,Value=blackhole-db \
+  --statistic Minimum --period 300 --evaluation-periods 1 \
+  --threshold 30 --comparison-operator LessThanThreshold --treat-missing-data notBreaching \
+  --alarm-actions <SNS 주제 ARN> --ok-actions <SNS 주제 ARN>
+```
+
 - 알람 설명에는 **한글을 쓰지 않는다**(윈도 터미널에서 깨진다).
+- `BurstBalance`는 스토리지가 **gp2일 때만** 나오는 지표다. gp3로 바꾸면 지표가 사라지므로(`notBreaching`이라 알람은 `OK`로 남는다) 그때 이 알람을 지운다.
 - 상태 체크 알람만 `--treat-missing-data breaching`이다(인스턴스가 중지되어 지표가 끊겨도 알리려는 의도).
